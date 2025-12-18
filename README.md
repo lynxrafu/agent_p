@@ -38,4 +38,35 @@ Recommended to use **Python 3.12** (matches CI).
 - MongoDB access uses **PyMongo Async** (`AsyncMongoClient`). Motor is considered deprecated per the provided deprecation notice.
 - Worker is an RQ worker consuming the `agent_tasks` queue (see `docker-compose.yml` `worker.command`).
 
+### LLM selection, prompting, and observability
+
+This project uses **Gemini** via **LangChain** (`langchain-google-genai`) for:
+
+- **Routing (PeerAgent)**: low-variance classification (uses `temperature=0`), with **schema-validated output** via Pydantic.
+- **Answer synthesis (ContentAgent)**: grounded generation from web-search context (uses a low temperature and strict “context-only” rules).
+
+#### Prompt engineering practices used here
+
+- **Clear role + objective**: each agent prompt states what the agent is and what it must produce.
+- **Hard constraints**: routing must only output schema fields; ContentAgent must not use outside knowledge.
+- **Few-shot examples**: short examples reduce ambiguity and improve consistency.
+- **Format control**: we keep the model output “machine-parseable” where needed (routing) and keep final user answers structured (“Answer” + “Sources”).
+- **Token control**: search snippets are capped to reduce prompt bloat and improve reliability.
+
+#### What we persist to MongoDB
+
+Each task is stored in MongoDB with:
+
+- `status`: `queued | processing | completed | failed`
+- `result`: Pydantic `TaskResult` (answer, sources, model, error/stage, debug)
+- `route`, `route_confidence`, `route_rationale`: routing metadata for observability
+
+#### Future agents (Epic 2 / Epic 3)
+
+`CodeAgent` and `BusinessDiscoveryAgent` will be added as separate modules under `src/agents/`, each with:
+
+- A dedicated prompt appropriate to its task type
+- Pydantic input/output models
+- Outputs persisted on the same task record for consistency and observability
+
 

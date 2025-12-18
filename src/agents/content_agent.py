@@ -124,13 +124,32 @@ class ContentAgent(BaseAgent):
         return sources, "\n\n---\n\n".join(context_parts)
 
     async def _synthesize(self, question: str, context: str) -> str:
-        system_prompt = (
-            "You are ContentAgent.\n"
-            "Answer the user's question using ONLY the provided web search context.\n"
-            "Do not use outside knowledge. Do not hallucinate.\n"
-            "If the context is insufficient to answer, say so plainly."
+        system_prompt = "\n".join(
+            [
+                "You are ContentAgent.",
+                "Goal: answer the user's question using ONLY the provided web search context.",
+                "",
+                "Rules:",
+                "- Do not use outside knowledge.",
+                "- Do not invent facts, dates, or URLs.",
+                "- If the context is insufficient, say so plainly and explain what is missing.",
+                "- Be concise, direct, and professional.",
+                "",
+                "Output format:",
+                "- Output ONLY the answer text (no 'Sources' section; sources will be attached separately).",
+            ]
         )
-        user_prompt = f"Question:\n{question}\n\nWeb Search Context:\n{context}\n\nWrite the best possible answer."
+        user_prompt = "\n\n".join(
+            [
+                "Question:",
+                question,
+                "",
+                "Web Search Context:",
+                context,
+                "",
+                "Write the best possible answer based on the context.",
+            ]
+        )
         try:
             resp = await self._llm.ainvoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
         except (httpx.HTTPError, TimeoutError, OSError, ValueError, RuntimeError) as e:
