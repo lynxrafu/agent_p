@@ -43,6 +43,7 @@ class PeerAgent:
                             "  - content",
                             "  - code",
                             "  - business_discovery",
+                            "  - diagnosis",
                             "  - unknown",
                             "",
                             "Output requirements (STRICT):",
@@ -55,12 +56,14 @@ class PeerAgent:
                             "- If ambiguous, default to 'content'.",
                             "- If the user asks for code snippets, implementation, debugging, or API usage → code.",
                             "- If the user asks to diagnose business performance, root causes, ops issues, complaints → business_discovery.",
+                            "- If the user asks to structure findings into a problem tree / issue tree / causes and sub-causes → diagnosis.",
                             "- Otherwise → content.",
                             "",
                             "Examples:",
                             'User: "kimi k2 modeli hakkında beni bilgilendir" -> content',
                             'User: "LangChain metot örneğini bana göster" -> code',
                             'User: "Satışlarımız düşüyor, kök nedeni bulmama yardım et" -> business_discovery',
+                            'User: "Konuşmayı problem ağacına dönüştür ve nedenleri grupla" -> diagnosis',
                             'User: "Write a summary of this article" -> content',
                         ]
                     ),
@@ -112,6 +115,10 @@ class PeerAgent:
         # Code intent keywords (Turkish + English; keep minimal and deterministic).
         if any(k in t for k in ["code", "kod", "örnek", "example", "snippet", "yaz", "implement", "langchain"]):
             return RoutingDecision(destination=TaskType.code, confidence=0.55, rationale="keyword_match_code")
+
+        # Diagnosis intent keywords.
+        if any(k in t for k in ["problem tree", "issue tree", "problem ağacı", "ağaç", "root causes", "kök nedenler", "causes", "sub-causes", "diagnosis", "diagnose", "structure"]):
+            return RoutingDecision(destination=TaskType.diagnosis, confidence=0.55, rationale="keyword_match_diagnosis")
 
         # Business discovery intent keywords.
         if any(k in t for k in ["sales", "satış", "kök", "root cause", "problem", "şikayet", "complaint", "operasyon", "depo"]):

@@ -82,4 +82,13 @@ class Mongo:
         doc = await self.tasks.find_one({"task_id": task_id}, projection={"_id": 0})
         return doc
 
+    async def list_tasks_by_session(self, session_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        """List tasks for a session in chronological order (oldest first)."""
+        cursor = (
+            self.tasks.find({"session_id": session_id}, projection={"_id": 0})
+            .sort("created_at", 1)
+            .limit(limit)
+        )
+        return [doc async for doc in cursor]
+
 

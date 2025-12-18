@@ -11,6 +11,7 @@ class TaskType(str, Enum):
     content = "content"
     code = "code"
     business_discovery = "business_discovery"
+    diagnosis = "diagnosis"
     unknown = "unknown"
 
 

@@ -13,6 +13,7 @@ from src.core.logging import configure_logging
 from src.core.settings import get_settings
 from src.agents.code_agent import CodeAgent, CodeAgentConfig
 from src.agents.business_discovery_agent import BusinessDiscoveryAgent, BusinessDiscoveryAgentConfig
+from src.agents.diagnosis_agent import DiagnosisAgent, DiagnosisAgentConfig
 from src.agents.content_agent import ContentAgent, ContentAgentConfig, ContentAgentError
 from src.agents.peer_agent import PeerAgent
 from src.db.mongo import Mongo
@@ -96,6 +97,23 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
             )
             question = await agent.process(task_input)
             result = TaskResult(answer=question, model=settings.GEMINI_MODEL, debug=debug).model_dump()
+            await db.update_task(task_id, status="completed", result=result)
+            log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
+            return
+
+        if routing.destination == TaskType.diagnosis:
+            agent = DiagnosisAgent(
+                DiagnosisAgentConfig(
+                    google_api_key=settings.GOOGLE_API_KEY or "",
+                    model=settings.GEMINI_MODEL,
+                    mongo_url=mongo_url,
+                )
+            )
+            diag = await agent.process(task_input)
+            # Call via instance to support dependency injection / monkeypatching in tests.
+            answer = agent.render_markdown(diag)
+            debug2 = {**debug, "diagnosis": diag.model_dump()}
+            result = TaskResult(answer=answer, model=settings.GEMINI_MODEL, debug=debug2).model_dump()
             await db.update_task(task_id, status="completed", result=result)
             log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
             return
