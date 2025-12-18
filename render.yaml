@@ -1,0 +1,89 @@
+# =============================================================================
+# Render.com Blueprint - Infrastructure as Code
+# =============================================================================
+# Deploy: Connect GitHub repo to Render, it will auto-detect this file
+# Docs: https://render.com/docs/blueprint-spec
+# =============================================================================
+
+services:
+  # -------------------------------------------------------------------------
+  # API Service (FastAPI)
+  # -------------------------------------------------------------------------
+  - type: web
+    name: agent-p-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    envVars:
+      - key: MONGODB_URL
+        fromService:
+          type: pserv
+          name: agent-p-mongo
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: agent-p-redis
+          property: connectionString
+      - key: GOOGLE_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: TAVILY_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: GEMINI_MODEL
+        value: gemini-3-flash-preview
+      - key: LOG_LEVEL
+        value: INFO
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # -------------------------------------------------------------------------
+  # Background Worker (RQ)
+  # -------------------------------------------------------------------------
+  - type: worker
+    name: agent-p-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: rq worker agent_tasks --url $REDIS_URL
+    envVars:
+      - key: MONGODB_URL
+        fromService:
+          type: pserv
+          name: agent-p-mongo
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: agent-p-redis
+          property: connectionString
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3-flash-preview
+      - key: LOG_LEVEL
+        value: INFO
+    autoDeploy: true
+
+  # -------------------------------------------------------------------------
+  # Redis (Queue + Cache)
+  # -------------------------------------------------------------------------
+  - type: redis
+    name: agent-p-redis
+    plan: free  # Or starter for production
+    maxmemoryPolicy: noeviction
+
+# =============================================================================
+# NOTE: MongoDB
+# =============================================================================
+# Render doesn't have native MongoDB. Options:
+#
+# Option 1: MongoDB Atlas (Recommended)
+#   - Create free cluster at https://cloud.mongodb.com
+#   - Use connection string in MONGODB_URL env var
+#
+# Option 2: Render Private Service with Docker
+#   - Add a private service running mongo:7.0 image
+#   - More complex, not recommended for production
+# =============================================================================
+
