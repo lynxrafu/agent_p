@@ -1,0 +1,29 @@
+fastapi==0.125.0
+uvicorn[standard]==0.38.0
+
+# Queue
+redis==7.1.0
+rq==2.6.1
+
+# MongoDB (PyMongo async; Motor is deprecated)
+pymongo==4.15.5
+
+# Validation / config
+pydantic==2.12.5
+pydantic-settings==2.12.0
+
+# Logging
+structlog==25.5.0
+
+# Agents / LLM + web search (Story 1.2)
+langchain-core==1.2.2
+langchain-community==0.4.1
+langchain-google-genai==4.1.1
+tavily-python==0.7.17
+
+# Tests
+pytest==9.0.2
+pytest-asyncio==1.3.0
+httpx==0.28.1
+
+

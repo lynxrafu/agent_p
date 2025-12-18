@@ -1,0 +1,20 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /opt/agent_p
+hooks:
+  BeforeInstall:
+    - location: deploy/scripts/before_install.sh
+      timeout: 300
+      runas: root
+  ApplicationStop:
+    - location: deploy/scripts/stop_application.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: deploy/scripts/start_application.sh
+      timeout: 300
+      runas: root
+
+

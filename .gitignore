@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+dist/
+build/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Agent / workflow tooling (keep repo recruiter-clean)
+_bmad/
+_bmad-output/
+.claude/
+
+
