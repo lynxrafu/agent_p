@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from src.agents.content_agent import ContentAgent, ContentAgentConfig, ContentSearchError
+from src.models.task_input import TaskInput
 
 
 @pytest.mark.asyncio
@@ -36,7 +37,7 @@ async def test_content_agent_formats_sources_urls_only():
         llm=DummyLLM(),
     )
 
-    out = await agent.process("what is x?")
+    out = await agent.process(TaskInput(task="what is x?"))
     assert "Answer:" in out.answer
     assert "Sources:" in out.answer
     assert "- https://a.example" in out.answer
@@ -66,6 +67,6 @@ async def test_content_agent_raises_on_zero_results():
     )
 
     with pytest.raises(ContentSearchError):
-        await agent.process("anything")
+        await agent.process(TaskInput(task="anything"))
 
 

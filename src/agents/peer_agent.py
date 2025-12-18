@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from src.core.settings import Settings
 from src.models.routing_models import RoutingDecision, TaskType
+from src.models.task_input import TaskInput
 
 log = structlog.get_logger(__name__)
 
@@ -73,10 +74,10 @@ class PeerAgent:
         if self._llm is not None and hasattr(self._llm, "with_structured_output"):
             self._chain = self._prompt | self._llm.with_structured_output(RoutingDecision)
 
-    async def route(self, task: str) -> RoutingDecision:
+    async def route(self, input_data: TaskInput) -> RoutingDecision:
         """Route a task to an agent destination with fallback behavior."""
 
-        task = task.strip()
+        task = input_data.task.strip()
         if not task:
             return RoutingDecision(destination=TaskType.content, confidence=0.0, rationale="empty_task_defaults_to_content")
 

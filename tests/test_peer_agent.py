@@ -7,6 +7,7 @@ import pytest
 from src.agents.peer_agent import PeerAgent
 from src.core.settings import get_settings
 from src.models.routing_models import RoutingDecision, TaskType
+from src.models.task_input import TaskInput
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,7 @@ async def test_peer_agent_defaults_unknown_to_content_when_llm_returns_unknown()
     # Force chain injection without calling real LLM.
     agent._chain = DummyChain()  # type: ignore[attr-defined]  # noqa: SLF001  # pylint: disable=protected-access
 
-    decision = await agent.route("some ambiguous task")
+    decision = await agent.route(TaskInput(task="some ambiguous task"))
     assert decision.destination == TaskType.content
 
 
@@ -42,7 +43,7 @@ async def test_peer_agent_falls_back_to_keyword_routing_when_llm_throws():
     agent = PeerAgent(get_settings(), llm=object())
     agent._chain = DummyChain()  # type: ignore[attr-defined]  # noqa: SLF001  # pylint: disable=protected-access
 
-    decision = await agent.route("LangChain metot örneğini bana göster")
+    decision = await agent.route(TaskInput(task="LangChain metot örneğini bana göster"))
     assert decision.destination == TaskType.code
 
 

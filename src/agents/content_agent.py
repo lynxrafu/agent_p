@@ -12,6 +12,7 @@ from tavily import AsyncTavilyClient
 
 from src.agents.base import BaseAgent
 from src.models.agent_content import ContentAgentOutput, ContentSource
+from src.models.task_input import TaskInput
 
 
 class ContentAgentError(RuntimeError):
@@ -67,8 +68,8 @@ class ContentAgent(BaseAgent):
             temperature=0.2,
         )
 
-    async def process(self, task: str) -> ContentAgentOutput:
-        task = task.strip()
+    async def process(self, input_data: TaskInput) -> ContentAgentOutput:
+        task = input_data.task.strip()
         if not task:
             raise ContentInputError("Task content cannot be empty")
 

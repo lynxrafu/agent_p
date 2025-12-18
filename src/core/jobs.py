@@ -16,6 +16,7 @@ from src.agents.peer_agent import PeerAgent
 from src.db.mongo import Mongo
 from src.models.task_models import TaskResult
 from src.models.routing_models import TaskType
+from src.models.task_input import TaskInput
 
 log = structlog.get_logger(__name__)
 
@@ -40,7 +41,8 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
 
         # Story 1.3: route-first execution via PeerAgent (LLM + keyword fallback).
         peer = PeerAgent(settings)
-        routing = await peer.route(task)
+        task_input = TaskInput(task=task)
+        routing = await peer.route(task_input)
 
         await db.set_task_route(
             task_id=task_id,
@@ -63,7 +65,7 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
                     model=settings.GEMINI_MODEL,
                 )
             )
-            output = await agent.process(task)
+            output = await agent.process(task_input)
             result = TaskResult(answer=output.answer, sources=output.sources, model=output.model, debug=debug).model_dump()
             await db.update_task(task_id, status="completed", result=result)
             log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
@@ -99,7 +101,7 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
                 model=settings.GEMINI_MODEL,
             )
         )
-        output = await agent.process(task)
+        output = await agent.process(task_input)
         result = TaskResult(answer=output.answer, sources=output.sources, model=output.model, debug=debug).model_dump()
         await db.update_task(task_id, status="completed", result=result)
         log.info("worker_completed_task", task_id=task_id, route="content_default")
