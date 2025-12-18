@@ -62,10 +62,13 @@ class ContentAgent(BaseAgent):
 
         self._config = config
         self._tavily = tavily_client or AsyncTavilyClient(api_key=config.tavily_api_key)
+        # Vendor guidance: Gemini 3 models recommend keeping temperature at default 1.0.
+        # For other models, we keep a lower temperature for grounded synthesis.
+        temperature = 1.0 if config.model.startswith("gemini-3") else 0.2
         self._llm = llm or ChatGoogleGenerativeAI(
             model=config.model,
             google_api_key=config.google_api_key,
-            temperature=0.2,
+            temperature=temperature,
         )
 
     async def process(self, input_data: TaskInput) -> ContentAgentOutput:

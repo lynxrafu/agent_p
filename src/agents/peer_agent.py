@@ -72,10 +72,13 @@ class PeerAgent:
         # LLM is optional. If not configured or fails, we fall back to keyword routing.
         self._llm = llm
         if self._llm is None and self._config.google_api_key:
+            # Vendor guidance: Gemini 3 models recommend keeping temperature at default 1.0.
+            # For non-Gemini-3 models, we prefer low variance for routing/classification.
+            temperature = 1.0 if self._config.model.startswith("gemini-3") else 0.0
             self._llm = ChatGoogleGenerativeAI(
                 model=self._config.model,
                 google_api_key=self._config.google_api_key,
-                temperature=0,
+                temperature=temperature,
             )
 
         self._chain = None
