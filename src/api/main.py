@@ -7,7 +7,10 @@ from typing import Any
 from uuid import uuid4
 
 import structlog
+import redis
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 from pydantic import BaseModel, Field
 
 from src.core.logging import configure_logging
@@ -95,17 +98,34 @@ async def get_task(task_id: str) -> TaskReadResponse:
 @app.get("/health")
 async def health() -> dict[str, Any]:
     """Health check: verifies Mongo ping and Redis connectivity."""
-    # Mongo
-    mongo: Mongo = app.state.mongo
-    await mongo.ping()
-
-    # Redis (queue backend)
-    q = get_task_queue()
-    # Avoid blocking the event loop with a sync ping.
     import asyncio
 
-    await asyncio.to_thread(q.connection.ping)
+    mongo: Mongo = app.state.mongo
+    mongo_ok = True
+    mongo_error: str | None = None
+    try:
+        await mongo.ping()
+    except (PyMongoError, TimeoutError, OSError, ConnectionError, RuntimeError) as e:
+        mongo_ok = False
+        mongo_error = str(e)
 
-    return {"status": "healthy"}
+    q = get_task_queue()
+    redis_ok = True
+    redis_error: str | None = None
+    try:
+        # Avoid blocking the event loop with a sync ping.
+        await asyncio.to_thread(q.connection.ping)
+    except (redis.exceptions.RedisError, TimeoutError, OSError, ConnectionError, RuntimeError) as e:
+        redis_ok = False
+        redis_error = str(e)
+
+    overall = "healthy" if mongo_ok and redis_ok else "degraded"
+    payload: dict[str, Any] = {
+        "status": overall,
+        "mongo": {"ok": mongo_ok, "error": mongo_error},
+        "redis": {"ok": redis_ok, "error": redis_error},
+    }
+    status_code = 200 if overall == "healthy" else 503
+    return JSONResponse(status_code=status_code, content=payload)
 
 

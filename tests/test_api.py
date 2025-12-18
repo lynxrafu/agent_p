@@ -33,7 +33,62 @@ async def test_health_ok(monkeypatch):
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.get("/health")
     assert res.status_code == 200
-    assert res.json() == {"status": "healthy"}
+    body = res.json()
+    assert body["status"] == "healthy"
+    assert body["mongo"]["ok"] is True
+    assert body["redis"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_health_degraded_when_mongo_fails(monkeypatch):
+    class DummyMongo:
+        async def ping(self):
+            raise RuntimeError("mongo down")
+
+    class DummyConn:
+        def ping(self):
+            return True
+
+    class DummyQueue:
+        connection = DummyConn()
+
+    app.state.mongo = DummyMongo()
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/health")
+    assert res.status_code == 503
+    body = res.json()
+    assert body["status"] == "degraded"
+    assert body["mongo"]["ok"] is False
+    assert body["redis"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_health_degraded_when_redis_fails(monkeypatch):
+    class DummyMongo:
+        async def ping(self):
+            return None
+
+    class DummyConn:
+        def ping(self):
+            raise RuntimeError("redis down")
+
+    class DummyQueue:
+        connection = DummyConn()
+
+    app.state.mongo = DummyMongo()
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/health")
+    assert res.status_code == 503
+    body = res.json()
+    assert body["status"] == "degraded"
+    assert body["mongo"]["ok"] is True
+    assert body["redis"]["ok"] is False
 
 
 @pytest.mark.asyncio
