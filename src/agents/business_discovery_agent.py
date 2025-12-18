@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import importlib
+import re
 import time
 from typing import Any, Literal, TypedDict
 
@@ -408,6 +409,10 @@ class BusinessDiscoveryAgent:
         if self._llm is None:
             return base_question, [], False
 
+        prompt = ""
+        raw = ""
+        latency_ms = 0.0
+        
         try:
             history_text = "\n".join(history[-12:]) if history else "(No prior conversation)"
             
@@ -424,7 +429,21 @@ class BusinessDiscoveryAgent:
             
             raw_content = getattr(resp, "content", None)
             raw = _extract_llm_content(raw_content)
+            
+            log.debug("discovery_llm_raw_response", raw=raw[:500] if raw else "empty")
+            
             if not raw.strip():
+                log.warning("discovery_llm_empty_response")
+                # Store trace even on failure
+                self.last_trace = {
+                    "agent": "business_discovery_agent",
+                    "stage": "question_failed",
+                    "model": self._config.model,
+                    "prompt": prompt[:1000],
+                    "raw_output": "EMPTY",
+                    "parsed_output": None,
+                    "latency_ms": latency_ms,
+                }
                 return base_question, [], False
 
             raw = raw.strip()
@@ -435,13 +454,13 @@ class BusinessDiscoveryAgent:
                     raw = raw[4:]
                 raw = raw.strip()
             
-            with suppress(ValueError, TypeError):
+            try:
                 turn = DiscoveryTurn.model_validate_json(raw)
                 self.last_trace = {
                     "agent": "business_discovery_agent",
                     "stage": "question",
                     "model": self._config.model,
-                    "prompt": prompt[:500],
+                    "prompt": prompt[:1000],
                     "raw_output": raw,
                     "parsed_output": turn.model_dump(),
                     "latency_ms": latency_ms,
@@ -449,9 +468,36 @@ class BusinessDiscoveryAgent:
                 q = turn.question.strip()
                 q = q if q.endswith("?") else q + "?"
                 return q, turn.information_gathered, turn.ready_for_summary
+            except (ValueError, TypeError) as parse_err:
+                log.warning("discovery_json_parse_failed", error=str(parse_err), raw_preview=raw[:200])
+                # Store trace with parse failure
+                self.last_trace = {
+                    "agent": "business_discovery_agent",
+                    "stage": "question_parse_failed",
+                    "model": self._config.model,
+                    "prompt": prompt[:1000],
+                    "raw_output": raw,
+                    "parsed_output": {"error": str(parse_err)},
+                    "latency_ms": latency_ms,
+                }
+                # Try to extract question from malformed response
+                if '"question"' in raw:
+                    import re
+                    match = re.search(r'"question"\s*:\s*"([^"]+)"', raw)
+                    if match:
+                        return match.group(1) + "?", [], False
 
         except Exception as e:
             log.warning("discovery_question_generation_failed", error=str(e))
+            self.last_trace = {
+                "agent": "business_discovery_agent",
+                "stage": "question_exception",
+                "model": self._config.model,
+                "prompt": prompt[:1000] if prompt else None,
+                "raw_output": raw[:500] if raw else None,
+                "parsed_output": {"error": str(e)},
+                "latency_ms": latency_ms,
+            }
 
         return base_question, [], False
 
