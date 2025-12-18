@@ -6,6 +6,28 @@
 - Start:
   - `docker-compose up --build`
 
+### Architecture (diagram)
+
+```mermaid
+flowchart LR
+  U[Client] -->|POST /v1/agent/execute| API[FastAPI API]
+  U -->|GET /v1/agent/tasks/{task_id}| API
+  API -->|enqueue job| RQ[RQ Queue (Redis)]
+  RQ -->|job| W[Worker]
+  W -->|route| PA[PeerAgent]
+  PA --> CA[ContentAgent]
+  PA --> CO[CodeAgent]
+  PA --> BD[BusinessDiscoveryAgent]
+  PA --> DI[DiagnosisAgent]
+  CA --> T[Tavily]
+  CA --> G[Gemini]
+  CO --> G
+  BD --> G
+  DI --> G
+  API --> M[(MongoDB)]
+  W --> M
+```
+
 ### Local dev (Python venv)
 
 Recommended to use **Python 3.12** (matches CI).
