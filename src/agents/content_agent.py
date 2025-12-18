@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from tavily import AsyncTavilyClient
@@ -84,7 +85,7 @@ class ContentAgent(BaseAgent):
                 include_answer=False,
                 include_images=False,
             )
-        except Exception as e:
+        except (httpx.HTTPError, TimeoutError, OSError, ValueError, RuntimeError) as e:
             raise ContentSearchError(f"Tavily search failed: {e}") from e
 
         results = (response or {}).get("results") or []
@@ -129,7 +130,7 @@ class ContentAgent(BaseAgent):
         user_prompt = f"Question:\n{question}\n\nWeb Search Context:\n{context}\n\nWrite the best possible answer."
         try:
             resp = await self._llm.ainvoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-        except Exception as e:
+        except (httpx.HTTPError, TimeoutError, OSError, ValueError, RuntimeError) as e:
             raise ContentSynthesisError(f"Gemini synthesis failed: {e}") from e
 
         content = getattr(resp, "content", None)

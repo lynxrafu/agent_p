@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-# ruff: noqa: BLE001
-# pylint: disable=broad-exception-caught
-
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import ValidationError
 
 from src.core.settings import Settings
 from src.models.routing_models import RoutingDecision, TaskType
@@ -79,15 +78,15 @@ class PeerAgent:
 
         # Attempt LLM routing first (if available).
         if self._chain is not None:
-            try:
+            with suppress(ValidationError, ValueError, TypeError, RuntimeError, TimeoutError, OSError):
                 decision: RoutingDecision = await self._chain.ainvoke({"task": task})
                 # Enforce default-to-content on unknown/ambiguous.
                 if decision.destination == TaskType.unknown:
                     return RoutingDecision(destination=TaskType.content, confidence=decision.confidence, rationale=decision.rationale)
                 return decision
-            except Exception as _e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                # Fall back to deterministic routing.
-                log.warning("peer_agent_llm_routing_failed_fallback_to_keyword", error=str(_e), exc_info=True)
+
+            # Fall back to deterministic routing.
+            log.warning("peer_agent_llm_routing_failed_fallback_to_keyword", task=task)
 
         return self._keyword_route(task)
 
