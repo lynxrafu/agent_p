@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -35,6 +36,7 @@ class CodeAgent(BaseAgent):
             google_api_key=config.google_api_key,
             temperature=temperature,
         )
+        self.last_trace: dict[str, Any] | None = None
 
     def _looks_destructive(self, task: str) -> bool:
         """Heuristic guardrail to block obviously destructive requests."""
@@ -156,7 +158,17 @@ class CodeAgent(BaseAgent):
 
         if self._looks_destructive(task):
             # Deterministic refusal (no network/LLM call).
-            return self._refusal_with_safe_alternative(language=language)
+            out = self._refusal_with_safe_alternative(language=language)
+            self.last_trace = {
+                "agent": "code_agent",
+                "stage": "refusal",
+                "model": self._config.model,
+                "prompt": None,
+                "raw_output": None,
+                "parsed_output": out,
+                "latency_ms": 0.0,
+            }
+            return out
 
         system_prompt = "\n".join(
             [
@@ -177,10 +189,21 @@ class CodeAgent(BaseAgent):
         )
         user_prompt = f"Task:\n{task}"
 
+        start = time.perf_counter()
         resp = await self._llm.ainvoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+        latency_ms = (time.perf_counter() - start) * 1000.0
         content = getattr(resp, "content", None)
         if not isinstance(content, str) or not content.strip():
             raise ValueError("LLM returned empty content")
+        self.last_trace = {
+            "agent": "code_agent",
+            "stage": "generation",
+            "model": self._config.model,
+            "prompt": f"{system_prompt}\n\n{user_prompt}",
+            "raw_output": content,
+            "parsed_output": content.strip(),
+            "latency_ms": latency_ms,
+        }
         return content.strip()
 
 

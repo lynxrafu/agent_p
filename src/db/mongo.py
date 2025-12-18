@@ -7,6 +7,8 @@ from typing import Any
 
 from pymongo import AsyncMongoClient
 
+from src.models.agent_logs import AgentLogEntry
+
 
 class Mongo:
     """Async MongoDB repository for agent task documents."""
@@ -15,6 +17,7 @@ class Mongo:
         self.client = AsyncMongoClient(mongo_url)
         self.db = self.client.agent_p
         self.tasks = self.db.agent_tasks
+        self.agent_logs = self.db.agent_logs
 
     async def ping(self) -> None:
         await self.client.admin.command("ping")
@@ -87,6 +90,22 @@ class Mongo:
         cursor = (
             self.tasks.find({"session_id": session_id}, projection={"_id": 0})
             .sort("created_at", 1)
+            .limit(limit)
+        )
+        return [doc async for doc in cursor]
+
+    async def create_agent_log(self, entry: AgentLogEntry) -> None:
+        """Persist a deep observability agent log entry."""
+        now = datetime.now(timezone.utc)
+        doc = entry.model_dump()
+        doc["created_at"] = doc.get("created_at") or now
+        await self.agent_logs.insert_one(doc)
+
+    async def list_agent_logs_by_session(self, session_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        """Fetch recent agent logs for a session (most recent first)."""
+        cursor = (
+            self.agent_logs.find({"session_id": session_id}, projection={"_id": 0})
+            .sort("created_at", -1)
             .limit(limit)
         )
         return [doc async for doc in cursor]

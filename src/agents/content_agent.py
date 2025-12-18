@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any
 
 import httpx
@@ -70,6 +71,7 @@ class ContentAgent(BaseAgent):
             google_api_key=config.google_api_key,
             temperature=temperature,
         )
+        self.last_trace: dict[str, Any] | None = None
 
     async def process(self, input_data: TaskInput) -> ContentAgentOutput:
         task = input_data.task.strip()
@@ -154,6 +156,7 @@ class ContentAgent(BaseAgent):
             ]
         )
         try:
+            start = time.perf_counter()
             resp = await self._llm.ainvoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
         except (httpx.HTTPError, TimeoutError, OSError, ValueError, RuntimeError) as e:
             raise ContentSynthesisError(f"Gemini synthesis failed: {e}") from e
@@ -161,6 +164,17 @@ class ContentAgent(BaseAgent):
         content = getattr(resp, "content", None)
         if not isinstance(content, str) or not content.strip():
             raise ContentSynthesisError("Gemini returned empty content")
+
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        self.last_trace = {
+            "agent": "content_agent",
+            "stage": "synthesis",
+            "model": self._config.model,
+            "prompt": f"{system_prompt}\n\n{user_prompt}",
+            "raw_output": content,
+            "parsed_output": content.strip(),
+            "latency_ms": latency_ms,
+        }
         return content.strip()
 
     def _format_answer(self, answer_text: str, sources: list[ContentSource]) -> str:

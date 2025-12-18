@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 from dataclasses import dataclass
+import time
 from typing import Any
 
 import structlog
@@ -87,6 +88,7 @@ class PeerAgent:
         self._chain = None
         if self._llm is not None and hasattr(self._llm, "with_structured_output"):
             self._chain = self._prompt | self._llm.with_structured_output(RoutingDecision)
+        self.last_trace: dict[str, Any] | None = None
 
     async def route(self, input_data: TaskInput) -> RoutingDecision:
         """Route a task to an agent destination with fallback behavior."""
@@ -96,9 +98,33 @@ class PeerAgent:
             return RoutingDecision(destination=TaskType.content, confidence=0.0, rationale="empty_task_defaults_to_content")
 
         # Attempt LLM routing first (if available).
-        if self._chain is not None:
+        # Prefer calling the LLM directly so we can log raw output, but fall back to structured chain
+        # (useful for tests and for LLM wrappers without .ainvoke on the injected object).
+        if self._llm is not None and hasattr(self._llm, "ainvoke"):
             with suppress(ValidationError, ValueError, TypeError, RuntimeError, TimeoutError, OSError):
-                decision: RoutingDecision = await self._chain.ainvoke({"task": task})
+                messages = self._prompt.format_messages(task=task)
+                prompt_text = "\n\n".join([getattr(m, "content", "") for m in messages])
+                start = time.perf_counter()
+                resp = await self._llm.ainvoke(messages)
+                latency_ms = (time.perf_counter() - start) * 1000.0
+
+                raw = getattr(resp, "content", None)
+                if not isinstance(raw, str) or not raw.strip():
+                    raise ValueError("LLM returned empty content")
+                raw = raw.strip()
+
+                decision = RoutingDecision.model_validate_json(raw)
+
+                self.last_trace = {
+                    "agent": "peer_agent",
+                    "stage": "routing",
+                    "model": self._config.model,
+                    "prompt": prompt_text,
+                    "raw_output": raw,
+                    "parsed_output": decision.model_dump(),
+                    "latency_ms": latency_ms,
+                }
+
                 # Enforce default-to-content on unknown/ambiguous.
                 if decision.destination == TaskType.unknown:
                     return RoutingDecision(destination=TaskType.content, confidence=decision.confidence, rationale=decision.rationale)
@@ -106,6 +132,22 @@ class PeerAgent:
 
             # Fall back to deterministic routing.
             log.warning("peer_agent_llm_routing_failed_fallback_to_keyword", task=task)
+        elif self._chain is not None:
+            # Best-effort: structured chain doesn't expose raw output, but still useful for routing + parsed logs.
+            with suppress(ValidationError, ValueError, TypeError, RuntimeError, TimeoutError, OSError):
+                decision = await self._chain.ainvoke({"task": task})
+                self.last_trace = {
+                    "agent": "peer_agent",
+                    "stage": "routing",
+                    "model": self._config.model,
+                    "prompt": self._prompt.format(task=task),
+                    "raw_output": None,
+                    "parsed_output": decision.model_dump(),
+                    "latency_ms": None,
+                }
+                if decision.destination == TaskType.unknown:
+                    return RoutingDecision(destination=TaskType.content, confidence=decision.confidence, rationale=decision.rationale)
+                return decision
 
         return self._keyword_route(task)
 

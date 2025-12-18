@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any, Literal
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -87,6 +88,7 @@ class DiagnosisAgent:
         self._chain = None
         if self._llm is not None and hasattr(self._llm, "with_structured_output"):
             self._chain = self._prompt | self._llm.with_structured_output(ProblemDiagnosisOutput)
+        self.last_trace: dict[str, Any] | None = None
 
     async def process(self, input_data: TaskInput) -> ProblemDiagnosisOutput:
         """Generate a structured diagnosis output."""
@@ -98,10 +100,34 @@ class DiagnosisAgent:
         if not conversation:
             conversation = "User provided no details."
 
-        if self._chain is None:
+        if self._llm is None:
             return self._fallback(conversation)
 
-        return await self._chain.ainvoke({"conversation": conversation})
+        messages = self._prompt.format_messages(conversation=conversation)
+        prompt_text = "\n\n".join([getattr(m, "content", "") for m in messages])
+        start = time.perf_counter()
+        resp = await self._llm.ainvoke(messages)
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        raw = getattr(resp, "content", None)
+        if not isinstance(raw, str) or not raw.strip():
+            return self._fallback(conversation)
+
+        raw = raw.strip()
+        try:
+            parsed = ProblemDiagnosisOutput.model_validate_json(raw)
+        except ValueError:
+            return self._fallback(conversation)
+
+        self.last_trace = {
+            "agent": "diagnosis_agent",
+            "stage": "diagnosis",
+            "model": self._config.model,
+            "prompt": prompt_text,
+            "raw_output": raw,
+            "parsed_output": parsed.model_dump(),
+            "latency_ms": latency_ms,
+        }
+        return parsed
 
     async def _build_conversation_from_session(self, *, session_id: str) -> str:
         docs = await self._mongo.list_tasks_by_session(session_id, limit=50)

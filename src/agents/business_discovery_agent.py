@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import importlib
+import time
 from typing import Any, TypedDict
 
 import structlog
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
+from contextlib import suppress
 
 from src.models.task_input import TaskInput
 
@@ -106,6 +108,7 @@ class BusinessDiscoveryAgent:
         self._chain = None
         if self._llm is not None and hasattr(self._llm, "with_structured_output"):
             self._chain = self._prompt | self._llm.with_structured_output(DiscoveryTurn)
+        self.last_trace: dict[str, Any] | None = None
 
         # Lazy import to keep base install light; required by Story 3.1 requirements.txt
         self._checkpointer = checkpointer
@@ -135,18 +138,47 @@ class BusinessDiscoveryAgent:
             msg = (state.get("message") or "").strip()
 
             # If LLM chain unavailable, use deterministic fallbacks.
-            if self._chain is None:
+            if self._llm is None:
                 q = self._fallback_question(phase)
                 history2 = history + [f"USER: {msg}", f"Q: {q}"]
                 next_phase = self._advance_phase(phase)
                 return {"history": history2, "phase": next_phase, "last_question": q}
 
-            turn: DiscoveryTurn = self._chain.invoke({"state": {"phase": phase, "history": history}, "message": msg})
-            q = turn.question.strip()
-            if not q.endswith("?"):
-                q = q + "?"
+            messages = self._prompt.format_messages(state={"phase": phase, "history": history}, message=msg)
+            prompt_text = "\n\n".join([getattr(m, "content", "") for m in messages])
+            start = time.perf_counter()
+            resp = self._llm.invoke(messages)
+            latency_ms = (time.perf_counter() - start) * 1000.0
+            raw = getattr(resp, "content", None)
+            if not isinstance(raw, str) or not raw.strip():
+                q = self._fallback_question(phase)
+                history2 = history + [f"USER: {msg}", f"Q: {q}"]
+                next_phase = self._advance_phase(phase)
+                return {"history": history2, "phase": next_phase, "last_question": q}
+
+            raw = raw.strip()
+            with suppress(ValueError, TypeError):
+                turn = DiscoveryTurn.model_validate_json(raw)
+                self.last_trace = {
+                    "agent": "business_discovery_agent",
+                    "stage": "turn",
+                    "model": self._config.model,
+                    "prompt": prompt_text,
+                    "raw_output": raw,
+                    "parsed_output": turn.model_dump(),
+                    "latency_ms": latency_ms,
+                }
+                q = turn.question.strip()
+                if not q.endswith("?"):
+                    q = q + "?"
+                history2 = history + [f"USER: {msg}", f"Q: {q}"]
+                next_phase = turn.phase if turn.phase in (DiscoveryPhase.problem_definition, DiscoveryPhase.impact_priority, DiscoveryPhase.needs_analysis) else phase
+                return {"history": history2, "phase": next_phase, "last_question": q}
+
+            # Parse failed; fall back.
+            q = self._fallback_question(phase)
             history2 = history + [f"USER: {msg}", f"Q: {q}"]
-            next_phase = turn.phase if turn.phase in (DiscoveryPhase.problem_definition, DiscoveryPhase.impact_priority, DiscoveryPhase.needs_analysis) else phase
+            next_phase = self._advance_phase(phase)
             return {"history": history2, "phase": next_phase, "last_question": q}
 
         # Graph definition: single step per invocation, persisted by checkpointer.

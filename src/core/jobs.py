@@ -17,6 +17,7 @@ from src.agents.diagnosis_agent import DiagnosisAgent, DiagnosisAgentConfig
 from src.agents.content_agent import ContentAgent, ContentAgentConfig, ContentAgentError
 from src.agents.peer_agent import PeerAgent
 from src.db.mongo import Mongo
+from src.models.agent_logs import AgentLogEntry
 from src.models.task_models import TaskResult
 from src.models.routing_models import TaskType
 from src.models.task_input import TaskInput
@@ -47,6 +48,24 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
         task_input = TaskInput(task=task, session_id=session_id)
         routing = await peer.route(task_input)
 
+        # Deep observability: log routing interaction (best-effort).
+        if hasattr(db, "create_agent_log"):
+            trace = getattr(peer, "last_trace", None) or {}
+            with suppress(Exception):
+                await db.create_agent_log(
+                    AgentLogEntry(
+                        task_id=task_id,
+                        session_id=session_id,
+                        agent="peer_agent",
+                        stage=trace.get("stage") or "routing",
+                        model=trace.get("model") or getattr(settings, "GEMINI_MODEL", None),
+                        prompt=trace.get("prompt"),
+                        raw_output=trace.get("raw_output"),
+                        parsed_output=trace.get("parsed_output") or routing.model_dump(),
+                        latency_ms=trace.get("latency_ms"),
+                    )
+                )
+
         await db.set_task_route(
             task_id=task_id,
             route=routing.destination.value,
@@ -69,6 +88,22 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                 )
             )
             output = await agent.process(task_input)
+            if hasattr(db, "create_agent_log"):
+                trace = getattr(agent, "last_trace", None) or {}
+                with suppress(Exception):
+                    await db.create_agent_log(
+                        AgentLogEntry(
+                            task_id=task_id,
+                            session_id=session_id,
+                            agent="content_agent",
+                            stage=trace.get("stage") or "main",
+                            model=trace.get("model") or output.model,
+                            prompt=trace.get("prompt"),
+                            raw_output=trace.get("raw_output"),
+                            parsed_output=trace.get("parsed_output") or output.model_dump(),
+                            latency_ms=trace.get("latency_ms"),
+                        )
+                    )
             result = TaskResult(answer=output.answer, sources=output.sources, model=output.model, debug=debug).model_dump()
             await db.update_task(task_id, status="completed", result=result)
             log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
@@ -82,6 +117,22 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                 )
             )
             answer = await agent.process(task_input)
+            if hasattr(db, "create_agent_log"):
+                trace = getattr(agent, "last_trace", None) or {}
+                with suppress(Exception):
+                    await db.create_agent_log(
+                        AgentLogEntry(
+                            task_id=task_id,
+                            session_id=session_id,
+                            agent="code_agent",
+                            stage=trace.get("stage") or "main",
+                            model=trace.get("model") or getattr(settings, "GEMINI_MODEL", None),
+                            prompt=trace.get("prompt"),
+                            raw_output=trace.get("raw_output"),
+                            parsed_output=trace.get("parsed_output") or answer,
+                            latency_ms=trace.get("latency_ms"),
+                        )
+                    )
             result = TaskResult(answer=answer, model=settings.GEMINI_MODEL, debug=debug).model_dump()
             await db.update_task(task_id, status="completed", result=result)
             log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
@@ -96,6 +147,22 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                 )
             )
             question = await agent.process(task_input)
+            if hasattr(db, "create_agent_log"):
+                trace = getattr(agent, "last_trace", None) or {}
+                with suppress(Exception):
+                    await db.create_agent_log(
+                        AgentLogEntry(
+                            task_id=task_id,
+                            session_id=session_id,
+                            agent="business_discovery_agent",
+                            stage=trace.get("stage") or "main",
+                            model=trace.get("model") or getattr(settings, "GEMINI_MODEL", None),
+                            prompt=trace.get("prompt"),
+                            raw_output=trace.get("raw_output"),
+                            parsed_output=trace.get("parsed_output") or question,
+                            latency_ms=trace.get("latency_ms"),
+                        )
+                    )
             result = TaskResult(answer=question, model=settings.GEMINI_MODEL, debug=debug).model_dump()
             await db.update_task(task_id, status="completed", result=result)
             log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
@@ -112,6 +179,22 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
             diag = await agent.process(task_input)
             # Call via instance to support dependency injection / monkeypatching in tests.
             answer = agent.render_markdown(diag)
+            if hasattr(db, "create_agent_log"):
+                trace = getattr(agent, "last_trace", None) or {}
+                with suppress(Exception):
+                    await db.create_agent_log(
+                        AgentLogEntry(
+                            task_id=task_id,
+                            session_id=session_id,
+                            agent="diagnosis_agent",
+                            stage=trace.get("stage") or "main",
+                            model=trace.get("model") or getattr(settings, "GEMINI_MODEL", None),
+                            prompt=trace.get("prompt"),
+                            raw_output=trace.get("raw_output"),
+                            parsed_output=trace.get("parsed_output") or diag.model_dump(),
+                            latency_ms=trace.get("latency_ms"),
+                        )
+                    )
             debug2 = {**debug, "diagnosis": diag.model_dump()}
             result = TaskResult(answer=answer, model=settings.GEMINI_MODEL, debug=debug2).model_dump()
             await db.update_task(task_id, status="completed", result=result)
