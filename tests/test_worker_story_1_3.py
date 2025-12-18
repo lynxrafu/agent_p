@@ -44,7 +44,7 @@ async def test_worker_code_route_marks_failed_and_persists_route(monkeypatch):
     class DummyCode:
         async def process(self, input_data):
             _ = input_data
-            return "```python\nprint('x')\n```\n\nExplanation."
+            return "```javascript\nconsole.log('x')\n```\n\nExplanation."
 
     monkeypatch.setattr(jobs_mod, "Mongo", DummyMongo)
     monkeypatch.setattr(jobs_mod, "PeerAgent", lambda *_args, **_kwargs: DummyPeer())
@@ -57,7 +57,7 @@ async def test_worker_code_route_marks_failed_and_persists_route(monkeypatch):
     # Final state should be completed with code output.
     final = [c for c in calls if c[0] == "update_task"][-1]
     assert final[2] == "completed"
-    assert "```python" in (final[3] or {}).get("answer", "")
+    assert "```" in (final[3] or {}).get("answer", "")
 
 
 @pytest.mark.asyncio

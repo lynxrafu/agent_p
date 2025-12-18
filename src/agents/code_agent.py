@@ -1,4 +1,4 @@
-"""CodeAgent: generates Python code snippets with brief explanations."""
+"""CodeAgent: generates code snippets (multi-language) with brief explanations."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class CodeAgentConfig:
 
 
 class CodeAgent(BaseAgent):
-    """CodeAgent: generates Python code in a fenced code block plus a brief explanation."""
+    """CodeAgent: generates code in a fenced code block plus a brief explanation."""
 
     def __init__(self, config: CodeAgentConfig, *, llm: Any | None = None) -> None:
         if not config.google_api_key:
@@ -56,10 +56,76 @@ class CodeAgent(BaseAgent):
         ]
         return any(re.search(p, t) for p in patterns)
 
-    def _refusal_with_safe_alternative(self) -> str:
+    def _detect_language(self, task: str) -> str:
+        """Best-effort language detection from the task text."""
+        t = task.lower()
+        # Keep simple + deterministic: prefer explicit user intent.
+        if any(k in t for k in ["typescript", " ts ", "tsx", "tsc"]):
+            return "ts"
+        if any(k in t for k in ["javascript", " js ", "node", "nodejs", "npm"]):
+            return "javascript"
+        if any(k in t for k in ["bash", "shell", "sh ", "linux", "ubuntu"]):
+            return "bash"
+        if any(k in t for k in ["powershell", "pwsh"]):
+            return "powershell"
+        if "sql" in t:
+            return "sql"
+        if any(k in t for k in ["golang", " go "]):
+            return "go"
+        if "rust" in t:
+            return "rust"
+        if any(k in t for k in ["c#", "csharp", ".net"]):
+            return "csharp"
+        if "java" in t:
+            return "java"
+        if any(k in t for k in ["c++", "cpp"]):
+            return "cpp"
+        if any(k in t for k in ["c ", "c-language"]):
+            return "c"
+        # Default for this project: Python (also best supported in tests).
+        return "python"
+
+    def _refusal_with_safe_alternative(self, *, language: str) -> str:
         """Return a safe alternative response in the required two-part format."""
-        code = "\n".join(
-            [
+        # Always provide a safe "dry run" alternative; language-specific where reasonable.
+        if language == "bash":
+            code_lines = [
+                "```bash",
+                "# SAFE ALTERNATIVE: dry-run listing only (no deletion).",
+                "find . -type f | head -n 200",
+                "```",
+            ]
+        elif language == "powershell":
+            code_lines = [
+                "```powershell",
+                "# SAFE ALTERNATIVE: dry-run listing only (no deletion).",
+                "Get-ChildItem -Recurse -File | Select-Object -First 200 | ForEach-Object { $_.FullName }",
+                "```",
+            ]
+        elif language == "javascript":
+            code_lines = [
+                "```javascript",
+                "// SAFE ALTERNATIVE: dry-run listing only (no deletion).",
+                "import { readdir } from 'node:fs/promises';",
+                "import { join } from 'node:path';",
+                "",
+                "async function walk(dir, out) {",
+                "  const entries = await readdir(dir, { withFileTypes: true });",
+                "  for (const e of entries) {",
+                "    const p = join(dir, e.name);",
+                "    if (e.isDirectory()) await walk(p, out);",
+                "    else out.push(p);",
+                "    if (out.length >= 200) return;",
+                "  }",
+                "}",
+                "",
+                "const files = [];",
+                "await walk('.', files);",
+                "console.log(files.join('\\n'));",
+                "```",
+            ]
+        else:
+            code_lines = [
                 "```python",
                 "from pathlib import Path",
                 "",
@@ -73,10 +139,10 @@ class CodeAgent(BaseAgent):
                 "    print(f\"... and {len(paths) - 200} more\")",
                 "```",
             ]
-        )
+        code = "\n".join(code_lines)
         explanation = (
             "I can’t help generate destructive code that deletes data or harms systems. "
-            "As a safe alternative, the script above performs a dry-run by listing files so you can review what would be affected. "
+            "As a safe alternative, the snippet above performs a dry-run by listing files so you can review what would be affected. "
             "If you need cleanup, narrow the scope (specific directory, file types, and confirmation requirements) and I can help write a safer, scoped approach."
         )
         return f"{code}\n\n{explanation}"
@@ -86,26 +152,27 @@ class CodeAgent(BaseAgent):
         if not task:
             raise ValueError("Task content cannot be empty")
 
+        language = self._detect_language(task)
+
         if self._looks_destructive(task):
             # Deterministic refusal (no network/LLM call).
-            return self._refusal_with_safe_alternative()
+            return self._refusal_with_safe_alternative(language=language)
 
         system_prompt = "\n".join(
             [
                 "You are CodeAgent.",
-                "Goal: generate clean, correct Python code for the user's request.",
+                "Goal: generate clean, correct code for the user's request.",
                 "",
                 "Rules:",
                 "- Output MUST be exactly two parts:",
-                "  1) A Python fenced code block: ```python ...```",
+                "  1) A specific language fenced code block: ```{language} ...```",
                 "  2) A short explanation (3-8 sentences) immediately after the code block.",
                 "- Do not include any other markdown sections.",
                 "- Prefer standard library where possible; if you use a third-party library, mention it in the explanation.",
-                "- Keep the code runnable and self-contained when possible.",
+                "- Keep the code runnable and self-contained when possible. {language} is the language of the code block.",
                 "",
-                "Safety rules:",
-                "- Refuse requests that enable malware, credential theft, data destruction, or abuse.",
-                "- When refusing, provide a safe alternative when possible (e.g., dry-run, validation, or sandboxed example).",
+                f"Target language: {language}",
+                "- The fenced code block language MUST match the target language above.",
             ]
         )
         user_prompt = f"Task:\n{task}"

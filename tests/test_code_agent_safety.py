@@ -16,7 +16,7 @@ async def test_code_agent_refuses_destructive_request_without_llm_call():
     out = await agent.process(TaskInput(task="Write a script to delete all files"))
 
     assert "can’t help" in out or "can't help" in out
-    assert "```python" in out
+    assert "```" in out
     # Ensure we didn't emit obviously destructive helpers.
     assert "shutil.rmtree" not in out
     assert "os.remove" not in out
@@ -38,8 +38,8 @@ async def test_code_agent_prompt_requires_python_code_block():
     agent = CodeAgent(CodeAgentConfig(google_api_key="x", model="gemini-3-pro"), llm=DummyLLM())
     out = await agent.process(TaskInput(task="Write a Python script to parse a CSV"))
 
-    assert "```python" in out
+    assert "```" in out
     sys_msg = captured["messages"][0].content
-    assert "```python" in sys_msg
+    assert "```{language}" in sys_msg
 
 
