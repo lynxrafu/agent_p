@@ -6,11 +6,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.core.settings import Settings
 from src.models.routing_models import RoutingDecision, TaskType
+
+log = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -84,7 +87,7 @@ class PeerAgent:
                 return decision
             except Exception as _e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 # Fall back to deterministic routing.
-                pass
+                log.warning("peer_agent_llm_routing_failed_fallback_to_keyword", error=str(_e), exc_info=True)
 
         return self._keyword_route(task)
 
@@ -92,7 +95,7 @@ class PeerAgent:
         t = task.lower()
 
         # Code intent keywords (Turkish + English; keep minimal and deterministic).
-        if any(k in t for k in ["code", "kod", "örnek", "example", "snippet", "write a", "yaz", "implement", "langchain"]):
+        if any(k in t for k in ["code", "kod", "örnek", "example", "snippet", "yaz", "implement", "langchain"]):
             return RoutingDecision(destination=TaskType.code, confidence=0.55, rationale="keyword_match_code")
 
         # Business discovery intent keywords.

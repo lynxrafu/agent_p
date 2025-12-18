@@ -77,7 +77,14 @@ async def get_task(task_id: str) -> TaskReadResponse:
         status = TaskStatus.queued
     raw_result = doc.get("result")
     result = TaskResult.model_validate(raw_result) if isinstance(raw_result, dict) else None
-    return TaskReadResponse(task_id=task_id, status=status, result=result)
+    return TaskReadResponse(
+        task_id=task_id,
+        status=status,
+        result=result,
+        route=doc.get("route"),
+        route_confidence=doc.get("route_confidence"),
+        route_rationale=doc.get("route_rationale"),
+    )
 
 
 @app.get("/health")

@@ -113,6 +113,9 @@ async def test_get_task_returns_status_and_result():
             return {
                 "task_id": task_id,
                 "status": "completed",
+                "route": "content",
+                "route_confidence": 0.9,
+                "route_rationale": "test",
                 "result": {
                     "answer": "Answer:\nHello\n\nSources:\n- https://example.com",
                     "sources": [{"title": "Example", "url": "https://example.com", "score": 0.9}],
@@ -131,5 +134,8 @@ async def test_get_task_returns_status_and_result():
     assert body["task_id"] == "abc"
     assert body["status"] == "completed"
     assert body["result"]["model"] == "gemini-3-pro"
+    assert body["route"] == "content"
+    assert body["route_confidence"] == 0.9
+    assert body["route_rationale"] == "test"
 
 

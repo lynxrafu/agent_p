@@ -20,6 +20,9 @@ class ContentAgentError(RuntimeError):
 class ContentConfigError(ContentAgentError):
     stage = "unknown"
 
+class ContentInputError(ContentAgentError):
+    stage = "unknown"
+
 
 class ContentSearchError(ContentAgentError):
     stage = "search"
@@ -64,7 +67,7 @@ class ContentAgent(BaseAgent):
     async def process(self, task: str) -> ContentAgentOutput:
         task = task.strip()
         if not task:
-            raise ValueError("Task content cannot be empty")
+            raise ContentInputError("Task content cannot be empty")
 
         sources, context = await self._search(task)
         answer_text = await self._synthesize(task, context)

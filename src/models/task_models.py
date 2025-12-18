@@ -28,5 +28,9 @@ class TaskReadResponse(BaseModel):
     task_id: str
     status: TaskStatus
     result: TaskResult | None = None
+    # Optional observability fields (persisted on task doc)
+    route: str | None = None
+    route_confidence: float | None = None
+    route_rationale: str | None = None
 
 
