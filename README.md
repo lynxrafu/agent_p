@@ -38,6 +38,32 @@ Recommended to use **Python 3.12** (matches CI).
 - MongoDB access uses **PyMongo Async** (`AsyncMongoClient`). Motor is considered deprecated per the provided deprecation notice.
 - Worker is an RQ worker consuming the `agent_tasks` queue (see `docker-compose.yml` `worker.command`).
 
+### Requirements
+
+Recruiter spec: see `REQUIREMENTS.md`.
+
+### Architecture (diagram)
+
+```mermaid
+flowchart LR
+  U[Client] -->|POST /v1/agent/execute| API[FastAPI API]
+  U -->|GET /v1/agent/tasks/{task_id}| API
+  API -->|enqueue job| RQ[RQ Queue]
+  RQ -->|job| W[Worker]
+  W -->|route(TaskInput)| PA[PeerAgent]
+  PA -->|LLM routing (Gemini) or keyword fallback| D{RoutingDecision}
+  D -->|content| CA[ContentAgent]
+  D -->|code| NA1[Not implemented yet: CodeAgent]
+  D -->|business_discovery| NA2[Not implemented yet: BusinessDiscoveryAgent]
+
+  CA -->|Tavily search| T[Tavily API]
+  CA -->|LLM synth (Gemini)| G[Gemini via LangChain]
+  PA -->|LLM (Gemini)| G
+
+  API -->|persist task| M[(MongoDB)]
+  W -->|update status/result + route metadata| M
+```
+
 ### LLM selection, prompting, and observability
 
 This project uses **Gemini** via **LangChain** (`langchain-google-genai`) for:
@@ -92,5 +118,21 @@ Each task is stored in MongoDB with:
 - Tavily Python SDK: [tavily-ai/tavily-python](https://github.com/tavily-ai/tavily-python)
 - Gemini prompting + temperature guidance: [Gemini API prompting intro](https://ai.google.dev/gemini-api/docs/prompting-intro) and [Gemini 3 temperature guidance](https://ai.google.dev/gemini-api/docs/gemini-3)
 - Google prompt design strategies: [Vertex AI prompt design strategies](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/prompt-design-strategies)
+
+### API design notes (recommendations)
+
+- **Versioning**: keep `/v1/...` stable; introduce breaking changes only via `/v2/...`.
+- **Rate limiting**: recommended for production (e.g., token bucket / fixed window in Redis returning HTTP 429).
+
+### Testing notes (how to expand coverage)
+
+- Add integration tests that spin up Docker Compose and validate end-to-end: enqueue → worker → Mongo persistence → polling.
+- Add contract tests for routing decisions and agent outputs (schema validation + edge cases).
+
+### Production hardening (next steps)
+
+- Implement deep interaction logging (raw LLM outputs + parsed outputs + latency + model metadata).
+- Add request rate limiting and auth (API keys/JWT) if exposed publicly.
+- Add retries/backoff for transient network failures (Tavily/Gemini) with timeouts.
 
 
