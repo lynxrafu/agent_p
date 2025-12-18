@@ -201,6 +201,9 @@ class ContentAgent(BaseAgent):
 
         return f"""You are an expert Researcher and Technical Writer. You excel at synthesizing information from various sources into clear, easy-to-understand summaries.
 
+## CRITICAL LANGUAGE RULE
+You MUST respond in the SAME LANGUAGE as the user's question. If the user asks in Turkish, respond in Turkish. If in English, respond in English. Match the user's language exactly.
+
 ## Current Date
 Today is {current_date}. Use this for evaluating information recency.
 

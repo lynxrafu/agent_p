@@ -121,6 +121,8 @@ class DiagnosisAgentConfig:
 
 STRUCTURING_SYSTEM_PROMPT = """ROLE: You are a Strategic Consultant. Your task is to break down a complex business problem into manageable components (Problem Structuring).
 
+CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE as the conversation/input. If the input is in Turkish, write all text fields in Turkish. If in English, use English.
+
 INPUT CONTEXT: You will receive a diagnosed problem and conversation details.
 
 TASK INSTRUCTIONS:

@@ -171,6 +171,8 @@ class BusinessDiscoveryAgentConfig:
 
 DISCOVERY_SYSTEM_PROMPT = """ROLE: You are an experienced Business Analyst. Your task is to deeply analyze the problem the user is facing and uncover the root cause.
 
+CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE as the user's message. If the user writes in Turkish, respond in Turkish. If in English, respond in English.
+
 BEHAVIOR GUIDELINES:
 1. **Investigation Only:** Never propose a solution immediately. Your job is to diagnose.
 2. **Iterative Questioning:** Proceed in a "Question-Answer" format. Ask only 1 focused question at a time.
@@ -206,6 +208,8 @@ Output: {{"question": "Reklam stratejisini değiştirdiğinizde beklediğiniz so
 
 
 SUMMARY_SYSTEM_PROMPT = """ROLE: You are an experienced Business Analyst completing a discovery interview.
+
+CRITICAL LANGUAGE RULE: Generate the analysis in the SAME LANGUAGE as the conversation. If the conversation is in Turkish, write the analysis in Turkish.
 
 Based on the complete conversation below, generate a final structured analysis.
 
