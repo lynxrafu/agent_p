@@ -18,6 +18,8 @@ class Mongo:
         self.db = self.client.agent_p
         self.tasks = self.db.agent_tasks
         self.agent_logs = self.db.agent_logs
+        # Session-level state (e.g., active agent stickiness per session_id).
+        self.sessions = self.db.agent_sessions
 
     async def ping(self) -> None:
         await self.client.admin.command("ping")
@@ -93,6 +95,28 @@ class Mongo:
             .limit(limit)
         )
         return [doc async for doc in cursor]
+
+    async def set_active_agent(self, session_id: str, active_agent: str | None) -> None:
+        """Set (or clear) the active agent for a session.
+        
+        This enables "system-level session continuity" where the router can keep
+        a multi-turn interaction on the same specialist agent.
+        """
+        now = datetime.now(timezone.utc)
+        update: dict[str, Any] = {"updated_at": now}
+        if active_agent is None:
+            update["active_agent"] = None
+        else:
+            update["active_agent"] = active_agent
+        await self.sessions.update_one(
+            {"session_id": session_id},
+            {"$set": update, "$setOnInsert": {"created_at": now, "session_id": session_id}},
+            upsert=True,
+        )
+
+    async def get_active_agent(self, session_id: str) -> dict[str, Any] | None:
+        """Get the session state doc (includes active_agent + timestamps)."""
+        return await self.sessions.find_one({"session_id": session_id}, projection={"_id": 0})
 
     async def create_agent_log(self, entry: AgentLogEntry) -> None:
         """Persist a deep observability agent log entry."""

@@ -24,7 +24,7 @@ async def test_diagnosis_agent_uses_session_transcript_when_available():
             raise AssertionError("Chain should be used via prompt piping in this test")
 
     agent = DiagnosisAgent(
-        DiagnosisAgentConfig(google_api_key="", model="gemini-3-pro", mongo_url="mongodb://x"),
+        DiagnosisAgentConfig(google_api_key="", model="gemini-3-flash-preview", mongo_url="mongodb://x"),
         llm=None,
         mongo=DummyMongo(),  # type: ignore[arg-type]
     )
@@ -33,7 +33,8 @@ async def test_diagnosis_agent_uses_session_transcript_when_available():
 
     out = await agent.process(TaskInput(task="", session_id="s1"))
     md = DiagnosisAgent.render_markdown(out)
-    assert "Problem tree" in md
+    assert "Problem Tree" in md  # Updated to match new format "Problem Tree (Issue Tree)"
     assert out.tree.label
+    assert out.problem_type  # New field from spec
 
 

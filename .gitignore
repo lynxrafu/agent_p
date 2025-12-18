@@ -1,26 +1,54 @@
+# Environment
 .env
 .env.*
-!.env.example
+!env.example
+
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Testing
 .pytest_cache/
-.ruff_cache/
-.mypy_cache/
 .coverage
 coverage.xml
-dist/
-build/
+htmlcov/
+.tox/
+
+# Type checking / Linting
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
 .venv/
 venv/
+ENV/
+
+# IDEs
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
-# Agent / workflow tooling (keep repo recruiter-clean)
+# OS
+.DS_Store
+Thumbs.db
+
+# Development tooling (not for public repo)
 _bmad/
 _bmad-output/
 .claude/
-
-# Local agent instructions / scratch (not recruiter-facing)
 claude.md
 
+# Logs
+*.log
+logs/
 

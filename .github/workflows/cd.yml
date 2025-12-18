@@ -1,0 +1,116 @@
+name: CD
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION || 'eu-central-1' }}
+  CODEDEPLOY_APPLICATION: agent-p
+  DEPLOYMENT_GROUP_STAGING: agent-p-staging
+  DEPLOYMENT_GROUP_PRODUCTION: agent-p-production
+  S3_BUCKET: ${{ secrets.S3_DEPLOY_BUCKET }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+
+    env:
+      MONGODB_URL: mongodb://localhost:27017
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine deployment group
+        id: env
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+            echo "deployment_group=${{ env.DEPLOYMENT_GROUP_PRODUCTION }}" >> $GITHUB_OUTPUT
+          else
+            echo "deployment_group=${{ env.DEPLOYMENT_GROUP_STAGING }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create deployment artifact
+        run: |
+          ARTIFACT_NAME="agent-p-${GITHUB_SHA:0:7}.zip"
+          zip -r "$ARTIFACT_NAME" . \
+            -x ".git/*" \
+            -x ".venv/*" \
+            -x "__pycache__/*" \
+            -x "*.pyc" \
+            -x ".pytest_cache/*" \
+            -x ".mypy_cache/*" \
+            -x "*.egg-info/*"
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+
+      - name: Upload artifact to S3
+        run: |
+          aws s3 cp "${{ env.ARTIFACT_NAME }}" "s3://${{ env.S3_BUCKET }}/deployments/${{ env.ARTIFACT_NAME }}"
+
+      - name: Create CodeDeploy deployment
+        run: |
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+            --deployment-group-name ${{ steps.env.outputs.deployment_group }} \
+            --s3-location bucket=${{ env.S3_BUCKET }},bundleType=zip,key=deployments/${{ env.ARTIFACT_NAME }} \
+            --description "Automated deployment from commit ${GITHUB_SHA:0:7}" \
+            --query 'deploymentId' \
+            --output text)
+          echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> $GITHUB_ENV
+          echo "::notice::Created deployment $DEPLOYMENT_ID"
+
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for deployment ${{ env.DEPLOYMENT_ID }} to complete..."
+          aws deploy wait deployment-successful --deployment-id ${{ env.DEPLOYMENT_ID }}
+          echo "::notice::Deployment ${{ env.DEPLOYMENT_ID }} completed successfully"
+

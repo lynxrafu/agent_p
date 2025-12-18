@@ -16,6 +16,12 @@ from src.agents.business_discovery_agent import BusinessDiscoveryAgent, Business
 from src.agents.diagnosis_agent import DiagnosisAgent, DiagnosisAgentConfig
 from src.agents.content_agent import ContentAgent, ContentAgentConfig, ContentAgentError
 from src.agents.peer_agent import PeerAgent
+
+# Import LangChain exceptions for proper error handling
+try:
+    from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
+except ImportError:
+    ChatGoogleGenerativeAIError = RuntimeError  # Fallback if import fails
 from src.db.mongo import Mongo
 from src.models.agent_logs import AgentLogEntry
 from src.models.task_models import TaskResult
@@ -44,9 +50,14 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
         await db.update_task(task_id, status="processing")
 
         # Story 1.3: route-first execution via PeerAgent (LLM + keyword fallback).
-        peer = PeerAgent(settings)
+        peer = PeerAgent(settings, session_store=db)
         task_input = TaskInput(task=task, session_id=session_id)
         routing = await peer.route(task_input)
+
+        # System-level session continuity: remember which agent is currently active.
+        if session_id:
+            with suppress(Exception):
+                await db.set_active_agent(session_id, routing.destination.value)
 
         # Deep observability: log routing interaction (best-effort).
         if hasattr(db, "create_agent_log"):
@@ -85,7 +96,8 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                     google_api_key=settings.GOOGLE_API_KEY or "",
                     tavily_api_key=settings.TAVILY_API_KEY or "",
                     model=settings.GEMINI_MODEL,
-                )
+                ),
+                mongo=db,
             )
             output = await agent.process(task_input)
             if hasattr(db, "create_agent_log"):
@@ -114,7 +126,9 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                 CodeAgentConfig(
                     google_api_key=settings.GOOGLE_API_KEY or "",
                     model=settings.GEMINI_MODEL,
-                )
+                    tavily_api_key=settings.TAVILY_API_KEY,  # Research-first: web search for latest docs
+                ),
+                mongo=db,  # Mongo-backed session history for persistence across workers
             )
             answer = await agent.process(task_input)
             if hasattr(db, "create_agent_log"):
@@ -147,6 +161,10 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                 )
             )
             question = await agent.process(task_input)
+            # If the discovery interview completed (final analysis), stop sticking the session.
+            if session_id and "## Business Discovery Analysis" in question:
+                with suppress(Exception):
+                    await db.set_active_agent(session_id, None)
             if hasattr(db, "create_agent_log"):
                 trace = getattr(agent, "last_trace", None) or {}
                 with suppress(Exception):
@@ -207,7 +225,8 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
                 google_api_key=settings.GOOGLE_API_KEY or "",
                 tavily_api_key=settings.TAVILY_API_KEY or "",
                 model=settings.GEMINI_MODEL,
-            )
+            ),
+            mongo=db,
         )
         output = await agent.process(task_input)
         result = TaskResult(answer=output.answer, sources=output.sources, model=output.model, debug=debug).model_dump()
@@ -217,7 +236,7 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
         log.error("worker_failed_task", task_id=task_id, error=str(e), stage=getattr(e, "stage", "unknown"), exc_info=True)
         result = TaskResult(error=str(e), stage=getattr(e, "stage", "unknown"), model=settings.GEMINI_MODEL).model_dump()
         await db.update_task(task_id, status="failed", result=result)
-    except (ValidationError, PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError) as e:
+    except (ValidationError, PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, ChatGoogleGenerativeAIError) as e:
         log.error("worker_failed_task", task_id=task_id, error=str(e), exc_info=True)
         model = getattr(settings, "GEMINI_MODEL", None)
         result = TaskResult(error=str(e), stage="unknown", model=model).model_dump()

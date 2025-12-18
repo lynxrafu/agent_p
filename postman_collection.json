@@ -1,0 +1,558 @@
+{
+	"info": {
+		"_postman_id": "agent-p-api-collection",
+		"name": "Agent_P API",
+		"description": "Agentic API with Peer Agent routing to specialist agents (ContentAgent, CodeAgent, BusinessDiscoveryAgent, DiagnosisAgent)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "task_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "session_id",
+			"value": "test-session-001",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Check if API, MongoDB, and Redis are healthy"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Content Agent (Research)",
+			"item": [
+				{
+					"name": "Ask about a topic",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"What is the Python programming language? Give me a brief overview.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to ContentAgent - researches web and returns cited answer"
+					},
+					"response": []
+				},
+				{
+					"name": "Ask about K2 model (Turkish)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Kimi K2 modeli hakkında beni bilgilendir\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to ContentAgent - example from claude.md spec"
+					},
+					"response": []
+				},
+				{
+					"name": "Follow-up with session (pronoun resolution)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Who created it?\",\n    \"session_id\": \"{{session_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Tests session memory - 'it' should resolve to previous topic"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Code Agent",
+			"item": [
+				{
+					"name": "Generate Python code",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Write a Python function to read a file and count word frequencies\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to CodeAgent - generates code with explanations"
+					},
+					"response": []
+				},
+				{
+					"name": "LangChain code example (Turkish)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Kimi K2'yi LangChain metot örneğini bana göster\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to CodeAgent - example from claude.md spec"
+					},
+					"response": []
+				},
+				{
+					"name": "Generate JavaScript code",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Write a JavaScript async function to fetch data from an API with error handling\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to CodeAgent - JavaScript code generation"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Business Discovery Agent",
+			"item": [
+				{
+					"name": "Start business discovery (Turkish)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Şirketimde müşteri şikayetleri çok arttı, problemi anlamama yardımcı olur musun?\",\n    \"session_id\": \"business-discovery-001\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to BusinessDiscoveryAgent - starts Q&A interview flow"
+					},
+					"response": []
+				},
+				{
+					"name": "Business discovery - answer question",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Müşteri hizmetleri departmanı en çok etkileniyor. 3 aydır bu sorun var.\",\n    \"session_id\": \"business-discovery-001\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Continue the business discovery interview with an answer"
+					},
+					"response": []
+				},
+				{
+					"name": "Sales decline problem (Turkish)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Satışlarımız yılda %20 düşüyor, kök nedeni bulmam için bana sorular sorar mısın?\",\n    \"session_id\": \"sales-discovery-001\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Example from claude.md - sales decline discovery"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Diagnosis Agent (Problem Structuring)",
+			"item": [
+				{
+					"name": "Structure a problem",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Diagnose this problem: Sales are declining because our marketing is ineffective, competitors are offering lower prices, and our product no longer meets customer expectations.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Routes to DiagnosisAgent - creates structured problem tree"
+					},
+					"response": []
+				},
+				{
+					"name": "Problem tree (Turkish)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.task_id) {",
+									"    pm.collectionVariables.set('task_id', jsonData.task_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Problem ağacı oluştur: Pazarlama bütçemizi verimli kullanamıyoruz, rakipler daha düşük fiyat sunuyor, ürün farklılaşması konusunda gerideyiz.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Turkish problem structuring request"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Task Status",
+			"item": [
+				{
+					"name": "Get task result",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/agent/tasks/{{task_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "tasks", "{{task_id}}"]
+						},
+						"description": "Get the status and result of a submitted task. Use after POST /execute."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Error Cases",
+			"item": [
+				{
+					"name": "Empty task (should fail)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Test error handling - empty task should return 422"
+					},
+					"response": []
+				},
+				{
+					"name": "Missing task field (should fail)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"wrong_field\": \"test\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/agent/execute",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "execute"]
+						},
+						"description": "Test error handling - missing required field"
+					},
+					"response": []
+				},
+				{
+					"name": "Non-existent task ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/agent/tasks/non-existent-task-id-12345",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "agent", "tasks", "non-existent-task-id-12345"]
+						},
+						"description": "Test error handling - task not found"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
+

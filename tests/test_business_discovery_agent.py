@@ -17,7 +17,7 @@ async def test_business_discovery_agent_resumes_session_state_with_injected_chec
 
     # Force deterministic path by disabling LLM chain.
     agent = BusinessDiscoveryAgent(
-        BusinessDiscoveryAgentConfig(google_api_key="", model="gemini-3-pro", mongo_url="mongodb://x"),
+        BusinessDiscoveryAgentConfig(google_api_key="", model="gemini-3-flash-preview", mongo_url="mongodb://x"),
         llm=None,
         checkpointer=saver,
     )

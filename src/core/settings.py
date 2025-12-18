@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Future stories (agents)
     GOOGLE_API_KEY: str | None = None
     TAVILY_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3-pro"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     # API security (Story 4.2)
     API_KEY: str | None = None

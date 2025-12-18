@@ -251,7 +251,7 @@ async def test_get_task_returns_status_and_result():
                 "result": {
                     "answer": "Answer:\nHello\n\nSources:\n- https://example.com",
                     "sources": [{"title": "Example", "url": "https://example.com", "score": 0.9}],
-                    "model": "gemini-3-pro",
+                    "model": "gemini-3-flash-preview",
                 },
             }
 
@@ -265,9 +265,165 @@ async def test_get_task_returns_status_and_result():
     body = res.json()
     assert body["task_id"] == "abc"
     assert body["status"] == "completed"
-    assert body["result"]["model"] == "gemini-3-pro"
+    assert body["result"]["model"] == "gemini-3-flash-preview"
     assert body["route"] == "content"
     assert body["route_confidence"] == 0.9
     assert body["route_rationale"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_get_task_returns_failed_status_with_error():
+    """Verify that tasks with model errors return proper error information."""
+    class DummyMongo:
+        async def get_task(self, task_id: str):
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "route": "code",
+                "route_confidence": 0.8,
+                "route_rationale": "keyword_match",
+                "result": {
+                    "answer": None,
+                    "sources": [],
+                    "model": "gemini-3-flash-preview",
+                    "error": "LLM generation failed: API key invalid",
+                    "stage": "unknown",  # Valid stage value
+                },
+            }
+
+    app.state.mongo = DummyMongo()
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/v1/agent/tasks/failed-task")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["task_id"] == "failed-task"
+    assert body["status"] == "failed"
+    assert body["result"]["error"] == "LLM generation failed: API key invalid"
+    assert body["result"]["answer"] is None
+
+
+@pytest.mark.asyncio
+async def test_execute_whitespace_only_task_400(monkeypatch):
+    """Verify that whitespace-only tasks are rejected."""
+    class DummyMongo:
+        async def create_task(self, task_id: str, task: str):
+            raise AssertionError("create_task should not be called for whitespace task")
+        async def set_task_session(self, task_id: str, session_id: str):
+            raise AssertionError("set_task_session should not be called for whitespace task")
+
+    app.state.mongo = DummyMongo()
+    app.state.rate_limiter = None
+
+    class DummyQueue:
+        def enqueue(self, *args, **kwargs):
+            raise AssertionError("enqueue should not be called for whitespace task")
+
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/v1/agent/execute", json={"task": "   \n\t  "})
+    assert res.status_code == 400
+    assert "empty" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_execute_preserves_custom_session_id(monkeypatch):
+    """Verify that provided session_id is used instead of generating a new one."""
+    created = {}
+
+    class DummyMongo:
+        async def create_task(self, task_id: str, task: str):
+            created["task_id"] = task_id
+        async def set_task_session(self, task_id: str, session_id: str):
+            created["session_id"] = session_id
+
+    app.state.mongo = DummyMongo()
+    app.state.rate_limiter = None
+
+    class DummyQueue:
+        def enqueue(self, func, **kwargs):
+            pass
+
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/v1/agent/execute",
+            json={"task": "Hello", "session_id": "my-custom-session"}
+        )
+
+    assert res.status_code == 202
+    body = res.json()
+    assert body["session_id"] == "my-custom-session"
+    assert created["session_id"] == "my-custom-session"
+
+
+@pytest.mark.asyncio
+async def test_get_task_handles_unknown_status_gracefully():
+    """Verify API doesn't crash if MongoDB contains an unexpected status value."""
+    class DummyMongo:
+        async def get_task(self, task_id: str):
+            return {
+                "task_id": task_id,
+                "status": "weird_unknown_status",  # Unexpected status
+                "route": None,
+            }
+
+    app.state.mongo = DummyMongo()
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/v1/agent/tasks/strange-task")
+
+    # Should not 500; should default to "queued"
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_execute_with_valid_task_triggers_queue_enqueue(monkeypatch):
+    """Happy path: valid task creates MongoDB record and enqueues job."""
+    mongo_calls = []
+    queue_calls = []
+
+    class DummyMongo:
+        async def create_task(self, task_id: str, task: str):
+            mongo_calls.append(("create_task", task_id, task))
+        async def set_task_session(self, task_id: str, session_id: str):
+            mongo_calls.append(("set_task_session", task_id, session_id))
+
+    app.state.mongo = DummyMongo()
+    app.state.rate_limiter = None
+
+    class DummyQueue:
+        def enqueue(self, func, **kwargs):
+            queue_calls.append(kwargs)
+
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/v1/agent/execute",
+            json={"task": "Write a Python function to sort a list"}
+        )
+
+    assert res.status_code == 202
+    body = res.json()
+    
+    # Verify MongoDB was called
+    assert len(mongo_calls) == 2
+    assert mongo_calls[0][0] == "create_task"
+    assert mongo_calls[0][2] == "Write a Python function to sort a list"
+    
+    # Verify queue was called
+    assert len(queue_calls) == 1
+    assert queue_calls[0]["task"] == "Write a Python function to sort a list"
 
 
