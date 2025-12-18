@@ -16,7 +16,7 @@ class TaskType(str, Enum):
 
 class RoutingDecision(BaseModel):
     destination: TaskType = Field(...)
-    confidence: float | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     rationale: str | None = None
 
 

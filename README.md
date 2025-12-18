@@ -53,6 +53,15 @@ This project uses **Gemini** via **LangChain** (`langchain-google-genai`) for:
 - **Format control**: we keep the model output “machine-parseable” where needed (routing) and keep final user answers structured (“Answer” + “Sources”).
 - **Token control**: search snippets are capped to reduce prompt bloat and improve reliability.
 
+#### Routing design (PeerAgent)
+
+Routing is intentionally **simple, auditable, and safe**:
+
+- **Goal**: select the right specialist agent without crashing or blocking the worker.
+- **Contract**: PeerAgent outputs a Pydantic `RoutingDecision` (`destination`, `confidence` in \([0, 1]\), optional `rationale`).
+- **Safe default**: ambiguity defaults to `content` (so the system never fails purely due to routing uncertainty).
+- **Fallbacks**: if LLM routing is unavailable or fails schema validation, we fall back to deterministic keyword routing.
+
 #### Model parameters (temperature)
 
 - For **Gemini 3** models, vendor guidance recommends keeping `temperature` at the default value (1.0) to avoid degraded/looping behavior.
@@ -78,8 +87,10 @@ Each task is stored in MongoDB with:
 
 - LangChain structured output: [Structured output](https://docs.langchain.com/oss/python/langchain/structured-output)
 - LangChain structured output API: [`with_structured_output`](https://reference.langchain.com/python/langchain_core/language_models/#langchain_core.language_models.chat_models.BaseChatModel.with_structured_output)
+- LangChain multi-agent supervision/routing pattern: [Supervisor](https://docs.langchain.com/oss/python/langchain/supervisor)
 - LangChain Google (Gemini integration): [langchain-ai/langchain-google](https://github.com/langchain-ai/langchain-google)
 - Tavily Python SDK: [tavily-ai/tavily-python](https://github.com/tavily-ai/tavily-python)
 - Gemini prompting + temperature guidance: [Gemini API prompting intro](https://ai.google.dev/gemini-api/docs/prompting-intro) and [Gemini 3 temperature guidance](https://ai.google.dev/gemini-api/docs/gemini-3)
+- Google prompt design strategies: [Vertex AI prompt design strategies](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/prompt-design-strategies)
 
 
