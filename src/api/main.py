@@ -8,13 +8,14 @@ from uuid import uuid4
 
 import structlog
 import redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 from pydantic import BaseModel, Field
 
 from src.core.logging import configure_logging
 from src.core.queue import get_task_queue
+from src.core.rate_limiter import RateLimiter, RateLimiterConfig
 from src.core.settings import get_settings
 from src.core.jobs import process_task_job
 from src.db.mongo import Mongo
@@ -40,14 +41,66 @@ async def lifespan(application: FastAPI):
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL)
     application.state.mongo = Mongo(settings.MONGODB_URL)
+    application.state.rate_limiter = None
+    if settings.RATE_LIMIT_ENABLED:
+        application.state.rate_limiter = RateLimiter(
+            RateLimiterConfig(
+                redis_url=settings.REDIS_URL,
+                requests_per_min=settings.RATE_LIMIT_REQUESTS_PER_MIN,
+                burst=settings.RATE_LIMIT_BURST,
+            )
+        )
     await application.state.mongo.ping()
     log.info("api_startup_complete")
     yield
+    if getattr(application.state, "rate_limiter", None) is not None:
+        await application.state.rate_limiter.close()
     await application.state.mongo.close()
     log.info("api_shutdown_complete")
 
 
 app = FastAPI(title="Peer Agent System API", version="1.0.0", lifespan=lifespan)
+
+
+def _client_identity(request: Request, api_key_header: str) -> str:
+    api_key = request.headers.get(api_key_header)
+    if api_key:
+        return f"key:{api_key}"
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return f"ip:{xff.split(',')[0].strip()}"
+    host = getattr(getattr(request, "client", None), "host", None)
+    return f"ip:{host or 'unknown'}"
+
+
+@app.middleware("http")
+async def security_and_rate_limit(request: Request, call_next):
+    # Allow unauthenticated/unlimited health and docs endpoints.
+    if request.url.path in {"/health", "/docs", "/openapi.json", "/redoc"}:
+        return await call_next(request)
+
+    settings = get_settings()
+
+    # Optional API key enforcement (Story 4.2).
+    if settings.API_KEY and request.url.path.startswith("/v1/"):
+        provided = request.headers.get(settings.API_KEY_HEADER)
+        if provided != settings.API_KEY:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    # Optional rate limiting (Story 4.2).
+    limiter: RateLimiter | None = getattr(request.app.state, "rate_limiter", None)
+    if limiter is not None:
+        identity = _client_identity(request, settings.API_KEY_HEADER)
+        result = await limiter.allow(identity)
+        if not result.allowed:
+            headers = {
+                "Retry-After": str(int(result.retry_after_s) + 1),
+                "X-RateLimit-Limit": str(result.limit),
+                "X-RateLimit-Remaining": "0",
+            }
+            return JSONResponse(status_code=429, content={"detail": "Too Many Requests"}, headers=headers)
+
+    return await call_next(request)
 
 
 @app.post("/v1/agent/execute", status_code=202, response_model=ExecuteResponse)

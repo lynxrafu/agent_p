@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-3-pro"
 
+    # API security (Story 4.2)
+    API_KEY: str | None = None
+    API_KEY_HEADER: str = "X-API-Key"
+
+    # Rate limiting (Story 4.2) - disabled by default for local/dev/test convenience
+    RATE_LIMIT_ENABLED: bool = False
+    RATE_LIMIT_REQUESTS_PER_MIN: int = 60
+    RATE_LIMIT_BURST: int = 60
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

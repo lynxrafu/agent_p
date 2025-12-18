@@ -10,6 +10,7 @@ os.environ.setdefault("MONGODB_URL", "mongodb://localhost:27017")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 
 from src.api.main import app
+from src.core.settings import get_settings
 
 
 @pytest.mark.asyncio
@@ -149,6 +150,76 @@ async def test_execute_happy_path_returns_202(monkeypatch):
     assert body["session_id"] == body["task_id"]
     assert created["task"] == "hello"
     assert enqueued["task"] == "hello"
+
+@pytest.mark.asyncio
+async def test_rate_limit_returns_429_when_limiter_denies(monkeypatch):
+    class DummyLimiter:
+        async def allow(self, identity: str):
+            _ = identity
+            class R:
+                allowed = False
+                retry_after_s = 1.1
+                limit = 60
+            return R()
+
+    # Inject a limiter without enabling Redis connections.
+    app.state.rate_limiter = DummyLimiter()
+
+    class DummyMongo:
+        async def create_task(self, task_id: str, task: str):
+            _ = (task_id, task)
+        async def set_task_session(self, task_id: str, session_id: str):
+            _ = (task_id, session_id)
+
+    app.state.mongo = DummyMongo()
+
+    class DummyQueue:
+        def enqueue(self, *_args, **_kwargs):
+            raise AssertionError("enqueue should not be called when rate limited")
+
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/v1/agent/execute", json={"task": "hello"})
+    assert res.status_code == 429
+    assert res.json()["detail"] == "Too Many Requests"
+
+
+@pytest.mark.asyncio
+async def test_api_key_required_for_v1_when_configured(monkeypatch):
+    # Configure API key.
+    os.environ["API_KEY"] = "secret"
+    os.environ["API_KEY_HEADER"] = "X-API-Key"
+    get_settings.cache_clear()
+
+    app.state.rate_limiter = None
+
+    class DummyMongo:
+        async def create_task(self, task_id: str, task: str):
+            _ = (task_id, task)
+        async def set_task_session(self, task_id: str, session_id: str):
+            _ = (task_id, session_id)
+
+    app.state.mongo = DummyMongo()
+
+    class DummyQueue:
+        def enqueue(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr("src.api.main.get_task_queue", DummyQueue)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res1 = await client.post("/v1/agent/execute", json={"task": "hello"})
+        res2 = await client.post("/v1/agent/execute", json={"task": "hello"}, headers={"X-API-Key": "secret"})
+
+    assert res1.status_code == 401
+    assert res2.status_code == 202
+
+    # Cleanup: avoid leaking env to other tests.
+    os.environ.pop("API_KEY", None)
+    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio
