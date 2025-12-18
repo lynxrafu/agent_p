@@ -11,6 +11,7 @@ from pymongo.errors import PyMongoError
 
 from src.core.logging import configure_logging
 from src.core.settings import get_settings
+from src.agents.code_agent import CodeAgent, CodeAgentConfig
 from src.agents.content_agent import ContentAgent, ContentAgentConfig, ContentAgentError
 from src.agents.peer_agent import PeerAgent
 from src.db.mongo import Mongo
@@ -72,14 +73,16 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
             return
 
         if routing.destination == TaskType.code:
-            result = TaskResult(
-                error="Agent not implemented yet: CodeAgent",
-                stage="unknown",
-                model=settings.GEMINI_MODEL,
-                debug=debug,
-            ).model_dump()
-            await db.update_task(task_id, status="failed", result=result)
-            log.info("worker_task_failed_unimplemented_agent", task_id=task_id, route=routing.destination.value)
+            agent = CodeAgent(
+                CodeAgentConfig(
+                    google_api_key=settings.GOOGLE_API_KEY or "",
+                    model=settings.GEMINI_MODEL,
+                )
+            )
+            answer = await agent.process(task_input)
+            result = TaskResult(answer=answer, model=settings.GEMINI_MODEL, debug=debug).model_dump()
+            await db.update_task(task_id, status="completed", result=result)
+            log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
             return
 
         if routing.destination == TaskType.business_discovery:

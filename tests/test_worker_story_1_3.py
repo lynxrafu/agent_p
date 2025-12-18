@@ -32,26 +32,32 @@ async def test_worker_code_route_marks_failed_and_persists_route(monkeypatch):
             return None
 
     class DummyPeer:
-        async def route(self, task: str):
-            _ = task
+        async def route(self, input_data):
+            _ = input_data
             return RoutingDecision(destination=TaskType.code, confidence=0.8, rationale="test-code")
 
     class DummyContent:
-        async def process(self, task: str):
-            _ = task
+        async def process(self, input_data):
+            _ = input_data
             raise AssertionError("ContentAgent should not be called for code route")
+
+    class DummyCode:
+        async def process(self, input_data):
+            _ = input_data
+            return "```python\nprint('x')\n```\n\nExplanation."
 
     monkeypatch.setattr(jobs_mod, "Mongo", DummyMongo)
     monkeypatch.setattr(jobs_mod, "PeerAgent", lambda *_args, **_kwargs: DummyPeer())
     monkeypatch.setattr(jobs_mod, "ContentAgent", lambda *_args, **_kwargs: DummyContent())
+    monkeypatch.setattr(jobs_mod, "CodeAgent", lambda *_args, **_kwargs: DummyCode())
 
     await jobs_mod._process_task(task_id="t1", task="write code", mongo_url="mongodb://x")
 
     assert ("set_task_route", "t1", "code", 0.8, "test-code") in calls
-    # Final state should be failed with a clear error.
+    # Final state should be completed with code output.
     final = [c for c in calls if c[0] == "update_task"][-1]
-    assert final[2] == "failed"
-    assert "CodeAgent" in (final[3] or {}).get("error", "")
+    assert final[2] == "completed"
+    assert "```python" in (final[3] or {}).get("answer", "")
 
 
 @pytest.mark.asyncio
