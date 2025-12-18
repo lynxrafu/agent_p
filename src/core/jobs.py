@@ -31,6 +31,64 @@ from src.models.task_input import TaskInput
 log = structlog.get_logger(__name__)
 
 
+# =============================================================================
+# LLM Provider Quota/Rate Limit Detection
+# =============================================================================
+# This handles errors from LLM providers (Gemini, OpenAI, etc.) when their
+# API quota is exceeded. This is DIFFERENT from our own API rate limiting
+# (handled in src/core/rate_limiter.py and src/api/main.py).
+#
+# LLM Quota Error: External provider limit (e.g., Gemini free tier: 20 req/day)
+# API Rate Limit:  Our own rate limiting (e.g., 60 req/min per client)
+# =============================================================================
+
+LLM_QUOTA_ERROR_EN = (
+    "LLM Quota Exceeded: The AI model service (Gemini) daily quota has been exhausted. "
+    "Free tier limit: 20 requests/day. Please wait 24 hours for quota reset, "
+    "use a different API key, or upgrade to a paid plan."
+)
+LLM_QUOTA_ERROR_TR = (
+    "LLM Kotası Aşıldı: Yapay zeka model servisi (Gemini) günlük kotası doldu. "
+    "Ücretsiz limit: 20 istek/gün. Kotanın sıfırlanması için 24 saat bekleyin, "
+    "farklı bir API anahtarı kullanın veya ücretli plana geçin."
+)
+
+# Indicators of LLM provider quota/rate limit errors
+_LLM_QUOTA_INDICATORS = frozenset([
+    "resource_exhausted",
+    "quota exceeded",
+    "quota",
+    "rate limit exceeded",
+    "too many requests",
+    "429",
+])
+
+
+def _is_llm_quota_error(error: Exception) -> bool:
+    """Check if an exception is an LLM provider quota/rate limit error.
+    
+    Detects errors from:
+    - Google Gemini API (RESOURCE_EXHAUSTED, quota exceeded)
+    - OpenAI API (rate_limit_exceeded, 429)
+    - Other LLM providers with similar patterns
+    
+    Note: This is separate from our API rate limiting in src/core/rate_limiter.py
+    """
+    error_str = str(error).lower()
+    return any(indicator in error_str for indicator in _LLM_QUOTA_INDICATORS)
+
+
+def _get_llm_quota_message(task: str) -> str:
+    """Return user-friendly LLM quota error message.
+    
+    Language detection: Turkish characters → Turkish message.
+    """
+    turkish_chars = set("çğıöşüÇĞİÖŞÜ")
+    if any(c in task for c in turkish_chars):
+        return LLM_QUOTA_ERROR_TR
+    return LLM_QUOTA_ERROR_EN
+
+
 def process_task_job(task_id: str, task: str, mongo_url: str, log_level: str = "INFO", session_id: str | None = None) -> None:
     """RQ worker entrypoint (sync function)."""
 
@@ -234,12 +292,24 @@ async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str
         log.info("worker_completed_task", task_id=task_id, route="content_default")
     except ContentAgentError as e:
         log.error("worker_failed_task", task_id=task_id, error=str(e), stage=getattr(e, "stage", "unknown"), exc_info=True)
-        result = TaskResult(error=str(e), stage=getattr(e, "stage", "unknown"), model=settings.GEMINI_MODEL).model_dump()
+        # Check if it's an LLM provider quota error (not our API rate limit)
+        if _is_llm_quota_error(e):
+            error_msg = _get_llm_quota_message(task)
+            log.warning("worker_llm_quota_exceeded", task_id=task_id)
+        else:
+            error_msg = str(e)
+        result = TaskResult(error=error_msg, stage=getattr(e, "stage", "unknown"), model=settings.GEMINI_MODEL).model_dump()
         await db.update_task(task_id, status="failed", result=result)
     except (ValidationError, PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, ChatGoogleGenerativeAIError) as e:
-        log.error("worker_failed_task", task_id=task_id, error=str(e), exc_info=True)
+        # Check if it's an LLM provider quota error (not our API rate limit)
+        if _is_llm_quota_error(e):
+            error_msg = _get_llm_quota_message(task)
+            log.warning("worker_llm_quota_exceeded", task_id=task_id, original_error=str(e)[:200])
+        else:
+            error_msg = str(e)
+            log.error("worker_failed_task", task_id=task_id, error=str(e), exc_info=True)
         model = getattr(settings, "GEMINI_MODEL", None)
-        result = TaskResult(error=str(e), stage="unknown", model=model).model_dump()
+        result = TaskResult(error=error_msg, stage="unknown", model=model).model_dump()
         with suppress(PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError):
             await db.update_task(task_id, status="failed", result=result)
     finally:
