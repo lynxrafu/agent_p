@@ -98,6 +98,9 @@ async def test_execute_empty_task_400(monkeypatch):
             _ = task_id
             _ = task
             return None
+        async def set_task_session(self, task_id: str, session_id: str):
+            _ = (task_id, session_id)
+            return None
 
     app.state.mongo = DummyMongo()
 
@@ -121,6 +124,8 @@ async def test_execute_happy_path_returns_202(monkeypatch):
         async def create_task(self, task_id: str, task: str):
             created["task_id"] = task_id
             created["task"] = task
+        async def set_task_session(self, task_id: str, session_id: str):
+            created["session_id"] = session_id
 
     app.state.mongo = DummyMongo()
 
@@ -141,6 +146,7 @@ async def test_execute_happy_path_returns_202(monkeypatch):
     body = res.json()
     assert "task_id" in body
     assert body["status"] == "queued"
+    assert body["session_id"] == body["task_id"]
     assert created["task"] == "hello"
     assert enqueued["task"] == "hello"
 

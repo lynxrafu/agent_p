@@ -25,11 +25,13 @@ log = structlog.get_logger(__name__)
 
 class ExecuteRequest(BaseModel):
     task: str = Field(...)
+    session_id: str | None = None
 
 
 class ExecuteResponse(BaseModel):
     task_id: str
     status: str
+    session_id: str | None = None
 
 
 @asynccontextmanager
@@ -57,16 +59,25 @@ async def execute_agent(request: ExecuteRequest) -> ExecuteResponse:
         raise HTTPException(status_code=400, detail="Task content cannot be empty")
 
     task_id = str(uuid4())
+    session_id = request.session_id or task_id
 
     # Persist task (MongoDB preferred logging/persistence per CLAUDE.md)
     mongo: Mongo = app.state.mongo
     await mongo.create_task(task_id=task_id, task=task)
+    await mongo.set_task_session(task_id=task_id, session_id=session_id)
 
     # Enqueue task for worker processing
     queue = get_task_queue()
-    queue.enqueue(process_task_job, task_id=task_id, task=task, mongo_url=settings.MONGODB_URL, log_level=settings.LOG_LEVEL)
+    queue.enqueue(
+        process_task_job,
+        task_id=task_id,
+        task=task,
+        mongo_url=settings.MONGODB_URL,
+        log_level=settings.LOG_LEVEL,
+        session_id=session_id,
+    )
 
-    return ExecuteResponse(task_id=task_id, status="queued")
+    return ExecuteResponse(task_id=task_id, status="queued", session_id=session_id)
 
 
 @app.get("/v1/agent/tasks/{task_id}", response_model=TaskReadResponse)
@@ -92,6 +103,7 @@ async def get_task(task_id: str) -> TaskReadResponse:
         route=doc.get("route"),
         route_confidence=doc.get("route_confidence"),
         route_rationale=doc.get("route_rationale"),
+        session_id=doc.get("session_id"),
     )
 
 

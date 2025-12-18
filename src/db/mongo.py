@@ -47,6 +47,15 @@ class Mongo:
             upsert=True,
         )
 
+    async def set_task_session(self, task_id: str, session_id: str) -> None:
+        """Attach a session_id to an existing task document (for stateful agents)."""
+        now = datetime.now(timezone.utc)
+        await self.tasks.update_one(
+            {"task_id": task_id},
+            {"$set": {"session_id": session_id, "updated_at": now}},
+            upsert=False,
+        )
+
     async def set_task_route(
         self,
         task_id: str,

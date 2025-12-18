@@ -9,5 +9,6 @@ class TaskInput(BaseModel):
     """Normalized task input passed to agents."""
 
     task: str = Field(..., description="User task text")
+    session_id: str | None = Field(default=None, description="Optional conversation/session identifier")
 
 

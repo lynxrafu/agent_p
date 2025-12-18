@@ -34,5 +34,6 @@ class TaskReadResponse(BaseModel):
     route: str | None = None
     route_confidence: float | None = None
     route_rationale: str | None = None
+    session_id: str | None = None
 
 

@@ -12,6 +12,7 @@ from pymongo.errors import PyMongoError
 from src.core.logging import configure_logging
 from src.core.settings import get_settings
 from src.agents.code_agent import CodeAgent, CodeAgentConfig
+from src.agents.business_discovery_agent import BusinessDiscoveryAgent, BusinessDiscoveryAgentConfig
 from src.agents.content_agent import ContentAgent, ContentAgentConfig, ContentAgentError
 from src.agents.peer_agent import PeerAgent
 from src.db.mongo import Mongo
@@ -22,15 +23,15 @@ from src.models.task_input import TaskInput
 log = structlog.get_logger(__name__)
 
 
-def process_task_job(task_id: str, task: str, mongo_url: str, log_level: str = "INFO") -> None:
+def process_task_job(task_id: str, task: str, mongo_url: str, log_level: str = "INFO", session_id: str | None = None) -> None:
     """RQ worker entrypoint (sync function)."""
 
     # Ensure worker logging is structured JSON (story/CLAUDE alignment).
     configure_logging(log_level)
-    asyncio.run(_process_task(task_id=task_id, task=task, mongo_url=mongo_url))
+    asyncio.run(_process_task(task_id=task_id, task=task, mongo_url=mongo_url, session_id=session_id))
 
 
-async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
+async def _process_task(task_id: str, task: str, mongo_url: str, session_id: str | None = None) -> None:
     """Process a single task: persist status, route, and final result."""
     db = Mongo(mongo_url)
     settings = None
@@ -42,7 +43,7 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
 
         # Story 1.3: route-first execution via PeerAgent (LLM + keyword fallback).
         peer = PeerAgent(settings)
-        task_input = TaskInput(task=task)
+        task_input = TaskInput(task=task, session_id=session_id)
         routing = await peer.route(task_input)
 
         await db.set_task_route(
@@ -86,14 +87,17 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
             return
 
         if routing.destination == TaskType.business_discovery:
-            result = TaskResult(
-                error="Agent not implemented yet: BusinessDiscoveryAgent",
-                stage="unknown",
-                model=settings.GEMINI_MODEL,
-                debug=debug,
-            ).model_dump()
-            await db.update_task(task_id, status="failed", result=result)
-            log.info("worker_task_failed_unimplemented_agent", task_id=task_id, route=routing.destination.value)
+            agent = BusinessDiscoveryAgent(
+                BusinessDiscoveryAgentConfig(
+                    google_api_key=settings.GOOGLE_API_KEY or "",
+                    model=settings.GEMINI_MODEL,
+                    mongo_url=mongo_url,
+                )
+            )
+            question = await agent.process(task_input)
+            result = TaskResult(answer=question, model=settings.GEMINI_MODEL, debug=debug).model_dump()
+            await db.update_task(task_id, status="completed", result=result)
+            log.info("worker_completed_task", task_id=task_id, route=routing.destination.value)
             return
 
         # Any remaining case defaults to content (AC2).
