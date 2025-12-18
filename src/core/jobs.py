@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 
 import structlog
+from pydantic import ValidationError
+from pymongo.errors import PyMongoError
 
 from src.core.logging import configure_logging
 from src.core.settings import get_settings
@@ -25,6 +28,7 @@ def process_task_job(task_id: str, task: str, mongo_url: str, log_level: str = "
 
 async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
     db = Mongo(mongo_url)
+    settings = None
     try:
         settings = get_settings()
 
@@ -100,11 +104,14 @@ async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
         log.error("worker_failed_task", task_id=task_id, error=str(e), stage=getattr(e, "stage", "unknown"), exc_info=True)
         result = TaskResult(error=str(e), stage=getattr(e, "stage", "unknown"), model=settings.GEMINI_MODEL).model_dump()
         await db.update_task(task_id, status="failed", result=result)
-    except Exception as e:
+    except (ValidationError, PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError) as e:
         log.error("worker_failed_task", task_id=task_id, error=str(e), exc_info=True)
-        result = TaskResult(error=str(e), stage="unknown").model_dump()
-        await db.update_task(task_id, status="failed", result=result)
+        model = getattr(settings, "GEMINI_MODEL", None)
+        result = TaskResult(error=str(e), stage="unknown", model=model).model_dump()
+        with suppress(PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError):
+            await db.update_task(task_id, status="failed", result=result)
     finally:
-        await db.close()
+        with suppress(PyMongoError, ConnectionError, TimeoutError, OSError, RuntimeError):
+            await db.close()
 
 
