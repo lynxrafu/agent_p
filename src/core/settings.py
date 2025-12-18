@@ -1,3 +1,5 @@
+"""Application settings and lazy settings loader."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """Return a cached Settings instance (lazy-loaded)."""
     # Lazy-load to avoid import-time crashes in tooling/tests when env isn't set yet.
     return Settings()
 

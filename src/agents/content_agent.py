@@ -1,3 +1,5 @@
+"""ContentAgent: web search + grounded synthesis with citations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

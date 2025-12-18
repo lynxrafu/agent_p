@@ -1,3 +1,5 @@
+"""PeerAgent: routes tasks to specialist agent types."""
+
 from __future__ import annotations
 
 from contextlib import suppress
@@ -17,6 +19,8 @@ log = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class PeerAgentConfig:
+    """Configuration for PeerAgent LLM routing."""
+
     google_api_key: str | None
     model: str
 

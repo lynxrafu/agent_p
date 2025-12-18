@@ -1,3 +1,5 @@
+"""Structured logging configuration (stdlib logging + structlog)."""
+
 from __future__ import annotations
 
 import logging

@@ -1,3 +1,5 @@
+"""MongoDB repository for persisting tasks and results."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -7,6 +9,8 @@ from pymongo import AsyncMongoClient
 
 
 class Mongo:
+    """Async MongoDB repository for agent task documents."""
+
     def __init__(self, mongo_url: str) -> None:
         self.client = AsyncMongoClient(mongo_url)
         self.db = self.client.agent_p

@@ -1,3 +1,5 @@
+"""Worker job execution: route tasks and persist results."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +29,7 @@ def process_task_job(task_id: str, task: str, mongo_url: str, log_level: str = "
 
 
 async def _process_task(task_id: str, task: str, mongo_url: str) -> None:
+    """Process a single task: persist status, route, and final result."""
     db = Mongo(mongo_url)
     settings = None
     try:

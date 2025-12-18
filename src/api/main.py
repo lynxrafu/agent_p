@@ -1,3 +1,5 @@
+"""FastAPI application entrypoint and HTTP endpoints."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -29,6 +31,7 @@ class ExecuteResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    """FastAPI lifespan hook: configure logging and establish Mongo connection."""
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL)
     application.state.mongo = Mongo(settings.MONGODB_URL)
@@ -44,6 +47,7 @@ app = FastAPI(title="Peer Agent System API", version="1.0.0", lifespan=lifespan)
 
 @app.post("/v1/agent/execute", status_code=202, response_model=ExecuteResponse)
 async def execute_agent(request: ExecuteRequest) -> ExecuteResponse:
+    """Create a task record and enqueue it for worker processing."""
     settings = get_settings()
     task = request.task.strip()
     if not task:
@@ -64,6 +68,7 @@ async def execute_agent(request: ExecuteRequest) -> ExecuteResponse:
 
 @app.get("/v1/agent/tasks/{task_id}", response_model=TaskReadResponse)
 async def get_task(task_id: str) -> TaskReadResponse:
+    """Fetch a task and its result (if present) from MongoDB."""
     mongo: Mongo = app.state.mongo
     doc = await mongo.get_task(task_id)
     if not doc:
@@ -89,6 +94,7 @@ async def get_task(task_id: str) -> TaskReadResponse:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
+    """Health check: verifies Mongo ping and Redis connectivity."""
     # Mongo
     mongo: Mongo = app.state.mongo
     await mongo.ping()
